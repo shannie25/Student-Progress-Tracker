@@ -1,0 +1,125 @@
+/*whole background*/
+.App {
+  background-color: #BFC9EE;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-family: Arial, sans-serif;
+}
+
+/*header section*/
+.app-header {
+  background-color: #305CDE;
+  color: white;
+  width: 100%;
+  padding: 1rem 2rem;
+  text-align: left;
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+
+/*splits the page into two columns*/
+.main-content {
+  display: flex;
+  flex: 1;
+}
+
+/* Left side (icons / illustration area) */
+.left-side {
+  flex: 1;
+}
+
+/* Right side (login form area) */
+.right-side {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Login card */
+.login-container {
+  background-color: white;
+  width: 350px;
+  padding: 30px;
+  border-radius: 10px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+  height: 400px;
+}
+
+/* Title */
+.login-container h2 {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+/* Form groups */
+.form-group {
+  margin-bottom: 15px;
+}
+
+/* Labels */
+.form-group label {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 5px;
+}
+
+/* Inputs */
+.form-group input {
+  width: 100%;
+  padding: 10px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+}
+
+/* Remember + forgot section */
+.form-options {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  margin-bottom: 20px;
+}
+
+/* Forgot password button */
+.forgot-btn {
+  background: none;
+  border: none;
+  color: #2f5be7;
+  cursor: pointer;
+}
+
+/* Buttons container */
+.form-buttons {
+  display: flex;
+  justify-content: space-between;
+}
+
+/* Login button */
+.login-btn {
+  background-color: #2f5be7;
+  color: white;
+  border: none;
+  padding: 10px;
+  width: 48%;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+/* Register button */
+.register-btn {
+  background-color: #2f5be7;
+  color: white;
+  border: none;
+  padding: 10px;
+  width: 48%;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+/* Button hover effects */
+.login-btn:hover,
+.register-btn:hover {
+  background-color: #2346b8;
+}
