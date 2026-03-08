@@ -138,7 +138,7 @@
 /* This creates the space between the boxes */
 .form-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr); /* Default 3 columns */
+  grid-template-columns: repeat(3, 1fr); 
   gap: 35px; /* Adds space between boxes */
   margin-bottom: 20px;
 }
@@ -146,7 +146,7 @@
 /* Specific layout for the middle section */
 .form-row-wide {
   display: grid;
-  grid-template-columns: 1fr 1fr; /* Student ID (2) is wider than other fields (1) */
+  grid-template-columns: 1fr 1fr; 
   gap: 35px;
   margin-bottom: 20px;
 }
