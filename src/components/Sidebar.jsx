@@ -39,13 +39,13 @@ const Sidebar = () => {
 };
 
 const styles = {
-  sidebar: { width: '260px', backgroundColor: '#1e293b', color: 'white', display: 'flex', flexDirection: 'column', height: '100vh', padding: '20px' },
-  header: { borderBottom: '1px solid #334155', marginBottom: '20px', paddingBottom: '10px', textAlign: 'center' },
+  sidebar: { width: '260px', backgroundColor: '#1e293b', color: 'white', display: 'flex', flexDirection: 'column', height: '100vh', padding: '20px', boxSizing: 'border-box', overflow: 'hidden' },
+  header: { borderBottom: '1px solid #334155', marginBottom: '20px', paddingBottom: '10px', textAlign: 'center', flexShrink: 0 },
   logo: { fontSize: '24px', margin: 0 },
   roleText: { fontSize: '12px', color: '#94a3b8', textTransform: 'capitalize' },
-  nav: { display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 },
+  nav: { display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, overflow: 'auto' },
   link: { color: 'white', textDecoration: 'none', padding: '12px', borderRadius: '8px', transition: '0.2s', textAlign: 'center' },
-  logoutBtn: { backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }
+  logoutBtn: { backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', flexShrink: 0, marginTop: 'auto' }
 };
 
 export default Sidebar;

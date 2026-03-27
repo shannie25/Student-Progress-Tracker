@@ -22,6 +22,9 @@ const GenerateReport = () => {
     html2pdf().set(opt).from(element).save();
   };
 
+  const headingStyle = { textAlign: 'center', color: '#1f2937', marginBottom: '18px' };
+  const detailStyle = { color: '#1f2937', marginBottom: '12px' };
+
   return (
     <div style={{ padding: '20px' }}>
       <button onClick={handleDownloadPDF} style={styles.button}>
@@ -29,15 +32,15 @@ const GenerateReport = () => {
       </button>
 
       <div ref={reportRef} style={styles.paper}>
-        <h2 style={{ textAlign: 'center' }}>Academic Performance Report</h2>
-        <p><strong>Name:</strong> {user?.name} ({user?.role})</p>
+        <h2 style={headingStyle}>Academic Performance Report</h2>
+        <p style={detailStyle}><strong>Name:</strong> {user?.name} ({user?.role})</p>
         <hr />
         <table style={styles.table}>
           <thead>
             <tr style={{ backgroundColor: '#f3f4f6' }}>
-              <th style={styles.td}>Subject</th>
-              <th style={styles.td}>Grade</th>
-              <th style={styles.td}>Feedback</th>
+              <th style={styles.th}>Subject</th>
+              <th style={styles.th}>Grade</th>
+              <th style={styles.th}>Feedback</th>
             </tr>
           </thead>
           <tbody>
@@ -57,9 +60,10 @@ const GenerateReport = () => {
 
 const styles = {
   button: { backgroundColor: '#2563eb', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '8px', cursor: 'pointer', marginBottom: '20px' },
-  paper: { padding: '30px', backgroundColor: 'white' },
+  paper: { padding: '30px', backgroundColor: 'white', color: '#1f2937' },
   table: { width: '100%', borderCollapse: 'collapse' },
-  td: { padding: '12px', border: '1px solid #ddd' }
+  th: { padding: '12px', border: '1px solid #ddd', color: '#1e293b', fontWeight: 600 },
+  td: { padding: '12px', border: '1px solid #ddd', color: '#1f2937' }
 };
 
 export default GenerateReport;
