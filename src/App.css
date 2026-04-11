@@ -56,7 +56,7 @@
   margin-bottom: 20px;
   color: #1f2937;
   font-size: 20px;
-  font-weight: 600;
+  font-weight: bold;
 }
 
 /* Form groups */
@@ -70,7 +70,8 @@
   font-size: 14px;
   margin-bottom: 5px;
   color: #1f2937;
-  font-weight: 500;
+  font-weight: bold;
+  text-align: left;
 }
 
 /* Inputs */
@@ -88,7 +89,7 @@
 .form-options {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: left;
   font-size: 12px;
   margin-bottom: 20px;
   color: #1f2937;
@@ -100,6 +101,44 @@
   gap: 6px;
   cursor: pointer;
   font-weight: 500;
+}
+
+.form-options input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #2f5be7;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-color: white;
+  border: 2px solid #d1d5db;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.form-options input[type="checkbox"]:checked {
+  background-color: #2f5be7;
+  border-color: #2f5be7;
+}
+
+.form-options input[type="checkbox"]:checked::after {
+  content: '✓';
+  color: white;
+  font-size: 14px;
+  font-weight: bold;
+  position: absolute;
+}
+
+/* Forgot password button */
+.forgot-btn {
+  background: none;
+  border: none;
+  color: #2f5be7;
+  cursor: pointer;
 }
 
 .form-options input[type="checkbox"] {
