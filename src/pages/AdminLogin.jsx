@@ -91,9 +91,9 @@ const styles = {
   form: { display: 'flex', flexDirection: 'column', gap: '20px' },
   inputGroup: { display: 'flex', flexDirection: 'column', gap: '8px' },
   label: { fontSize: '14px', fontWeight: '600', color: '#374151' },
-  input: { padding: '14px 16px', backgroundColor: '#e5e7eb', border: 'none', borderRadius: '12px', fontSize: '16px', outline: 'none' },
+  input: { padding: '14px 16px', backgroundColor: '#e5e7eb', border: 'none', borderRadius: '12px', fontSize: '16px', outline: 'none', color: '#111827', caretColor: '#111827', WebkitTextFillColor: '#111827' },
   passwordWrapper: { position: 'relative', width: '100%' },
-  passwordInput: { width: '100%', padding: '14px 16px', paddingRight: '45px', backgroundColor: '#e5e7eb', border: 'none', borderRadius: '12px', fontSize: '16px', outline: 'none', boxSizing: 'border-box' },
+  passwordInput: { width: '100%', padding: '14px 16px', paddingRight: '45px', backgroundColor: '#e5e7eb', border: 'none', borderRadius: '12px', fontSize: '16px', outline: 'none', boxSizing: 'border-box', color: '#111827', caretColor: '#111827', WebkitTextFillColor: '#111827' },
   eyeIconContainer: { position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', display: 'flex' },
   button: { padding: '14px', borderRadius: '12px', border: 'none', background: '#dc2626', color: 'white', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px' },
   errorBox: { color: '#b91c1c', backgroundColor: '#fef2f2', padding: '10px', borderRadius: '8px', textAlign: 'center', marginBottom: '15px', border: '1px solid #fecaca', fontSize: '14px' }
