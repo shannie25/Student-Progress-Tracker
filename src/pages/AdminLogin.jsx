@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
 import Layout from '../components/Layout';
@@ -6,6 +7,7 @@ import studentIcons from '../assets/icon.png';
 
 const AdminLogin = () => {
   const { login } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -15,7 +17,10 @@ const AdminLogin = () => {
     e.preventDefault();
     if (!(await login(email, password, 'admin'))) {
       setError('Invalid Email Address or Password');
+      return;
     }
+
+    navigate('/dashboard');
   };
 
   return (

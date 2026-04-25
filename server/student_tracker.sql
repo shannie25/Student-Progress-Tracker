@@ -22,8 +22,7 @@ CREATE TABLE grades (
 INSERT INTO users (id, email, name, role, password) VALUES
 ('1001', 'admin@school.com', 'System Admin', 'admin', 'password123'),
 ('2001', 'teacher@school.com', 'Mr. Smith', 'teacher', 'password123'),
-('3001', 'student@school.com', 'John Doe', 'student', 'password123');
-('4001', 'alessa@school.com', 'Alessa', 'student', 'alessagwapa143');
+('3001', 'student@school.com', 'John Doe', 'student', 'password123'),
 
 INSERT INTO grades (student_id, subject, score, feedback) VALUES
 ('3001', 'Mathematics', 85, 'Excellent work!'),
