@@ -49,9 +49,9 @@ const TeacherGradesManagement = () => {
         </label>
         <label>
           <span>Semester</span>
-          <select defaultValue="Spring">
-            <option>Spring</option>
-            <option>Fall</option>
+          <select defaultValue="1st Semester">
+            <option>1st Semester</option>
+            <option>2nd Semester</option>
           </select>
         </label>
         <button type="button">Clear Filters</button>

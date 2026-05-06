@@ -1,15 +1,27 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 import { formatName } from '../utils/formatName';
 import './TeacherStudents.css';
 
 const TeacherStudents = () => {
   const navigate = useNavigate();
-  const students = [
-    { name: 'Annie', id: '2024 - 0012', className: 'BSIT -1A', score: '95 /100', status: 'Passing' },
-    { name: 'Alessa', id: '2024 - 0015', className: 'BSIT -1A', score: '91 /100', status: 'Passing' },
-    { name: 'Credo', id: '2024 - 0015', className: 'BSIT -1A', score: '72 /100', status: 'At Risk' },
-  ];
+  const { users, grades } = useAuth();
+  const assignedStudents = users.filter((user) => user.role === 'student');
+  const students = assignedStudents.map((student) => {
+        const studentGrades = grades.filter((grade) => grade.studentId === student.id);
+        const averageScore = studentGrades.length > 0
+          ? Math.round(studentGrades.reduce((total, grade) => total + Number(grade.score || 0), 0) / studentGrades.length)
+          : 0;
+
+        return {
+          name: student.name,
+          id: student.id,
+          className: 'Assigned',
+          score: `${averageScore || '--'} /100`,
+          status: averageScore && averageScore < 75 ? 'At Risk' : 'Passing',
+        };
+      });
 
   return (
     <div className="teacher-students-page">
@@ -64,17 +76,22 @@ const TeacherStudents = () => {
                   </span>
                 </td>
                 <td data-label="Actions">
-                  <button type="button" className="students-profile-btn" onClick={() => navigate('/students/alessa')}>
+                  <button type="button" className="students-profile-btn" onClick={() => navigate(`/students/${student.id}`)}>
                     View Profile
                   </button>
                 </td>
               </tr>
             ))}
+            {students.length === 0 && (
+              <tr>
+                <td colSpan="5">No assigned students yet.</td>
+              </tr>
+            )}
           </tbody>
         </table>
 
         <button type="button" className="students-show-all">
-          Show All Students
+          Showing assigned students only
           <span aria-hidden="true">v</span>
         </button>
       </section>

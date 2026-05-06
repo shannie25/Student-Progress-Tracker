@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
 import { useLocation } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 
 const Login = () => {
   const { login } = useAuth();
@@ -11,13 +11,18 @@ const Login = () => {
   const [error, setError] = useState('');
 
   const isStudent = location.pathname.includes('student');
+  const role = isStudent ? 'student' : (location.pathname.includes('admin') ? 'admin' : 'teacher');
   const roleLabel = isStudent ? 'ID Number' : 'Email Address';
   const roleTitle = isStudent ? 'Student' : (location.pathname.includes('admin') ? 'Admin' : 'Teacher');
   const placeholderText = isStudent ? "Enter ID Number" : "Enter Email Address";
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!login(identifier, password)) setError(`Invalid ${roleLabel} or Password`);
+    const normalizedIdentifier = isStudent ? identifier.trim() : identifier.trim().toLowerCase();
+
+    if (!(await login(normalizedIdentifier, password, role))) {
+      setError(`Invalid ${roleLabel} or Password`);
+    }
   };
 
   return (
@@ -56,13 +61,11 @@ const Login = () => {
               {password.length > 0 && (
                 <div onClick={() => setShowPassword(!showPassword)} style={styles.eyeIconContainer}>
                   {showPassword ? (
-                    /* PHOTO 2: PASSWORD IS SHOWN (Open Eye) -> Clicking hides it */
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                       <circle cx="12" cy="12" r="3"></circle>
                     </svg>
                   ) : (
-                    /* PHOTO 1: PASSWORD IS HIDDEN (Crossed Eye) -> Clicking shows it */
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
                       <line x1="1" y1="1" x2="23" y2="23"></line>

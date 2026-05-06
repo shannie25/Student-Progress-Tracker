@@ -1,5 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider } from './context/AuthProvider';
+import { useAuth } from './hooks/useAuth';
+import { LoadingSpinner, StatusMessage } from './components/ui';
 import './App.css';
 
 import Dashboard from './pages/Dashboard';
@@ -18,14 +20,15 @@ import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 
 const AppRoutes = () => {
-  const { user, loading, error } = useAuth();
+  const { user, loading, error, reloadData } = useAuth();
 
   const navigate = useNavigate();
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#1f2937' }}>
-        Loading data from the server...
+      <div className="app-loading" role="status" aria-live="polite">
+        <LoadingSpinner label="Loading account data" />
+        <span>Loading your account data...</span>
       </div>
     );
   }
@@ -42,7 +45,16 @@ const AppRoutes = () => {
         />
         <Route
           path="/"
-          element={error ? <div style={{ padding: '32px', color: '#b91c1c' }}>{error}</div> : <Navigate to="/student" />}
+          element={error ? (
+            <div className="app-error-state">
+              <StatusMessage variant="error">
+                We could not load your account data. Please check that the server is running, then try again.
+              </StatusMessage>
+              <button type="button" className="login-btn" onClick={reloadData}>
+                Retry
+              </button>
+            </div>
+          ) : <Navigate to="/student" />}
         />
         <Route path="*" element={<Navigate to="/student" />} />
       </Routes>

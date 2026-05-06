@@ -1,192 +1,154 @@
-CREATE DATABASE student_tracker;
+CREATE DATABASE IF NOT EXISTS student_tracker;
 
 USE student_tracker;
 
-CREATE TABLE users (
-  id          VARCHAR(10)  PRIMARY KEY,
-  email       VARCHAR(100) NOT NULL,
-  firstname   VARCHAR(100) NOT NULL,
-  lastname    VARCHAR(100) NOT NULL,
-  role        VARCHAR(20)  NOT NULL CHECK (role IN ('admin', 'teacher', 'student')),
-  password    VARCHAR(255) NOT NULL,
-  UNIQUE (email)
+CREATE TABLE IF NOT EXISTS users (
+  id        VARCHAR(40)  PRIMARY KEY,
+  email     VARCHAR(100) NOT NULL UNIQUE,
+  firstname VARCHAR(100),
+  lastname  VARCHAR(100),
+  name      VARCHAR(180),
+  role      VARCHAR(20)  NOT NULL CHECK (role IN ('admin', 'teacher', 'student')),
+  password  VARCHAR(255) NOT NULL
 ) ENGINE=InnoDB;
 
-CREATE TABLE student_profile (
-  student_id  VARCHAR(10) PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS student_profile (
+  student_id  VARCHAR(40) PRIMARY KEY,
   grade_level INT,
   section     VARCHAR(50),
   FOREIGN KEY (student_id) REFERENCES users(id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE teacher_profile (
-  teacher_id  VARCHAR(10)  PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS teacher_profile (
+  teacher_id  VARCHAR(40) PRIMARY KEY,
   department  VARCHAR(100),
   FOREIGN KEY (teacher_id) REFERENCES users(id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE admin_profile (
-  admin_id     VARCHAR(10) PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS admin_profile (
+  admin_id     VARCHAR(40) PRIMARY KEY,
   access_level INT DEFAULT 1,
   FOREIGN KEY (admin_id) REFERENCES users(id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE subjects (
+CREATE TABLE IF NOT EXISTS subjects (
   subject_id   INT AUTO_INCREMENT PRIMARY KEY,
   subject_name VARCHAR(100) NOT NULL,
-  teacher_id   VARCHAR(10)  NOT NULL,
+  teacher_id   VARCHAR(40),
   FOREIGN KEY (teacher_id) REFERENCES users(id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE grades (
-  id         INT AUTO_INCREMENT PRIMARY KEY,
-  student_id VARCHAR(10) NOT NULL,
-  subject_id INT         NOT NULL,
-  score      INT         NOT NULL,
-  feedback   TEXT,
-  FOREIGN KEY (student_id) REFERENCES users(id),
-  FOREIGN KEY (subject_id) REFERENCES subjects(subject_id)
+CREATE TABLE IF NOT EXISTS courses (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  code        VARCHAR(40)  NOT NULL UNIQUE,
+  name        VARCHAR(120) NOT NULL,
+  description VARCHAR(255) DEFAULT '',
+  teacher_id  VARCHAR(40),
+  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (teacher_id) REFERENCES users(id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE attendance (
+CREATE TABLE IF NOT EXISTS teacher_assignments (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  teacher_id  VARCHAR(40)  NOT NULL,
+  student_id  VARCHAR(40)  NOT NULL,
+  subject     VARCHAR(100) NOT NULL,
+  course      VARCHAR(100) DEFAULT '',
+  section     VARCHAR(50)  DEFAULT '',
+  school_year VARCHAR(20)  NOT NULL DEFAULT '2025-2026',
+  semester    VARCHAR(40)  NOT NULL DEFAULT '1st Semester',
+  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY unique_teacher_assignment (teacher_id, student_id, subject, school_year, semester),
+  FOREIGN KEY (teacher_id) REFERENCES users(id),
+  FOREIGN KEY (student_id) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS grades (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  student_id  VARCHAR(40) NOT NULL,
+  subject_id  INT,
+  subject     VARCHAR(100),
+  teacher_id  VARCHAR(40),
+  score       DECIMAL(5,2) NOT NULL,
+  feedback    TEXT,
+  school_year VARCHAR(20) NOT NULL DEFAULT '2025-2026',
+  semester    VARCHAR(40) NOT NULL DEFAULT '1st Semester',
+  term        VARCHAR(40) NOT NULL DEFAULT 'Prelim',
+  FOREIGN KEY (student_id) REFERENCES users(id),
+  FOREIGN KEY (subject_id) REFERENCES subjects(subject_id),
+  FOREIGN KEY (teacher_id) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS attendance (
   log_id     INT AUTO_INCREMENT PRIMARY KEY,
-  student_id VARCHAR(10) NOT NULL,
+  student_id VARCHAR(40) NOT NULL,
   log_date   DATE        NOT NULL,
   status     VARCHAR(20) NOT NULL CHECK (status IN ('present', 'absent', 'late')),
   FOREIGN KEY (student_id) REFERENCES users(id)
 ) ENGINE=InnoDB;
 
-CREATE TABLE audit_log (
+CREATE TABLE IF NOT EXISTS grade_scales (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  label       VARCHAR(20) NOT NULL,
+  min_score   DECIMAL(5,2) NOT NULL,
+  max_score   DECIMAL(5,2) NOT NULL,
+  description VARCHAR(255) DEFAULT '',
+  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS audit_log (
   log_id     INT AUTO_INCREMENT PRIMARY KEY,
-  admin_id   VARCHAR(10)  NOT NULL,
+  admin_id   VARCHAR(40),
   action     VARCHAR(50)  NOT NULL,
   table_name VARCHAR(100) NOT NULL,
-  record_id  VARCHAR(50)  NOT NULL,
+  record_id  VARCHAR(80)  NOT NULL,
   old_value  TEXT,
   new_value  TEXT,
   changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (admin_id) REFERENCES users(id)
 ) ENGINE=InnoDB;
 
--- ==============================	SAMPLE DATA	==============================
-INSERT INTO users (id, email, firstname, lastname, role, password) VALUES
-('1001', 'admin@school.com',   'System', 'Admin', 'admin',   '$2b$10$hashedpasswordhere'),
-('2001', 'teacher@school.com', 'Mr.',    'Smith', 'teacher', '$2b$10$hashedpasswordhere'),
-('3001', 'student@school.com', 'John',   'Doe',   'student', '$2b$10$hashedpasswordhere');
+INSERT INTO users (id, email, firstname, lastname, name, role, password) VALUES
+('1001', 'admin@school.com', 'System', 'Admin', 'System Admin', 'admin', 'p2$120000$g-FwUFfeObgjSZKigpCeoQ$xvqD_slXCVyxFpVxgbGWx30aPNtXztkNLDcTxioPolc'),
+('2001', 'teacher@school.com', 'Maria', 'Reyes', 'Maria Reyes', 'teacher', 'p2$120000$JHsHWYbNFyNfw8QiCjxgIQ$jkhrmkxHY9fKv3gMahcYvYzpcRUq4o591p9WvmYfhEE'),
+('3001', 'student@school.com', 'John', 'Doe', 'John Doe', 'student', 'p2$120000$H6zPYan07cyqNOLwtF7-og$BTiltGHykxvl6DuSraw8ZsSd_tDtYlUcQVQmxlrtPuo')
+ON DUPLICATE KEY UPDATE email = VALUES(email), name = VALUES(name), role = VALUES(role);
 
-INSERT INTO admin_profile (admin_id, access_level) VALUES ('1001', 1);
-INSERT INTO teacher_profile (teacher_id, department) VALUES ('2001', 'Science and Math');
-INSERT INTO student_profile (student_id, grade_level, section) VALUES ('3001', 10, 'Section A');
+INSERT INTO admin_profile (admin_id, access_level) VALUES ('1001', 1)
+ON DUPLICATE KEY UPDATE access_level = VALUES(access_level);
+
+INSERT INTO teacher_profile (teacher_id, department) VALUES ('2001', 'Science and Math')
+ON DUPLICATE KEY UPDATE department = VALUES(department);
+
+INSERT INTO student_profile (student_id, grade_level, section) VALUES ('3001', 10, 'Section A')
+ON DUPLICATE KEY UPDATE grade_level = VALUES(grade_level), section = VALUES(section);
 
 INSERT INTO subjects (subject_name, teacher_id) VALUES
 ('Mathematics', '2001'),
-('Science',     '2001');but
+('Science', '2001');
 
-INSERT INTO grades (student_id, subject_id, score, feedback) VALUES
-('3001', 1, 85, 'Excellent work!'),
-('3001', 2, 92, 'Consistent performance.');
+INSERT INTO courses (code, name, description, teacher_id) VALUES
+('MATH10', 'Mathematics 10', 'Core mathematics course', '2001'),
+('SCI10', 'Science 10', 'Core science course', '2001')
+ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description), teacher_id = VALUES(teacher_id);
 
--- ==============================	TRIGGERS: USERS TABLE	==============================
-CREATE TRIGGER after_users_insert
-AFTER INSERT ON users
-FOR EACH ROW
-INSERT INTO audit_log (admin_id, action, table_name, record_id, new_value) VALUES (
-  @current_admin_id, 'INSERT', 'users', NEW.id,
-  CONCAT('firstname: ', NEW.firstname, ', lastname: ', NEW.lastname, ', role: ', NEW.role, ', email: ', NEW.email)
-);
+INSERT INTO teacher_assignments (teacher_id, student_id, subject, course, section, school_year, semester) VALUES
+('2001', '3001', 'Mathematics', 'MATH10', 'Section A', '2025-2026', '1st Semester'),
+('2001', '3001', 'Science', 'SCI10', 'Section A', '2025-2026', '1st Semester')
+ON DUPLICATE KEY UPDATE course = VALUES(course), section = VALUES(section);
 
-CREATE TRIGGER after_users_update
-AFTER UPDATE ON users
-FOR EACH ROW
-INSERT INTO audit_log (admin_id, action, table_name, record_id, old_value, new_value) VALUES (
-  @current_admin_id, 'UPDATE', 'users', OLD.id,
-  CONCAT('firstname: ', OLD.firstname, ', lastname: ', OLD.lastname, ', role: ', OLD.role, ', email: ', OLD.email),
-  CONCAT('firstname: ', NEW.firstname, ', lastname: ', NEW.lastname, ', role: ', NEW.role, ', email: ', NEW.email)
-);
+INSERT INTO grades (student_id, subject_id, subject, teacher_id, score, feedback, school_year, semester, term) VALUES
+('3001', 1, 'Mathematics', '2001', 85.00, 'Excellent work on problem solving.', '2025-2026', '1st Semester', 'Prelim'),
+('3001', 2, 'Science', '2001', 92.00, 'Consistent performance and strong lab output.', '2025-2026', '1st Semester', 'Midterm');
 
-CREATE TRIGGER after_users_delete
-AFTER DELETE ON users
-FOR EACH ROW
-INSERT INTO audit_log (admin_id, action, table_name, record_id, old_value) VALUES (
-  @current_admin_id, 'DELETE', 'users', OLD.id,
-  CONCAT('firstname: ', OLD.firstname, ', lastname: ', OLD.lastname, ', role: ', OLD.role, ', email: ', OLD.email)
-);
+INSERT INTO attendance (student_id, log_date, status) VALUES
+('3001', '2026-01-08', 'present'),
+('3001', '2026-01-09', 'late'),
+('3001', '2026-01-10', 'present'),
+('3001', '2026-01-13', 'absent');
 
--- ==============================	TRIGGERS: GRADES TABLE	==============================
-CREATE TRIGGER after_grades_insert
-AFTER INSERT ON grades
-FOR EACH ROW
-INSERT INTO audit_log (admin_id, action, table_name, record_id, new_value) VALUES (
-  @current_admin_id, 'INSERT', 'grades', NEW.id,
-  CONCAT('student_id: ', NEW.student_id, ', subject_id: ', NEW.subject_id, ', score: ', NEW.score)
-);
-
-CREATE TRIGGER after_grades_update
-AFTER UPDATE ON grades
-FOR EACH ROW
-INSERT INTO audit_log (admin_id, action, table_name, record_id, old_value, new_value) VALUES (
-  @current_admin_id, 'UPDATE', 'grades', OLD.id,
-  CONCAT('student_id: ', OLD.student_id, ', subject_id: ', OLD.subject_id, ', score: ', OLD.score),
-  CONCAT('student_id: ', NEW.student_id, ', subject_id: ', NEW.subject_id, ', score: ', NEW.score)
-);
-
-CREATE TRIGGER after_grades_delete
-AFTER DELETE ON grades
-FOR EACH ROW
-INSERT INTO audit_log (admin_id, action, table_name, record_id, old_value) VALUES (
-  @current_admin_id, 'DELETE', 'grades', OLD.id,
-  CONCAT('student_id: ', OLD.student_id, ', subject_id: ', OLD.subject_id, ', score: ', OLD.score)
-);
-
--- ==============================	TRIGGERS: SUBJECTS TABLE	==============================
-CREATE TRIGGER after_subjects_insert
-AFTER INSERT ON subjects
-FOR EACH ROW
-INSERT INTO audit_log (admin_id, action, table_name, record_id, new_value) VALUES (
-  @current_admin_id, 'INSERT', 'subjects', NEW.subject_id,
-  CONCAT('subject_name: ', NEW.subject_name, ', teacher_id: ', NEW.teacher_id)
-);
-
-CREATE TRIGGER after_subjects_update
-AFTER UPDATE ON subjects
-FOR EACH ROW
-INSERT INTO audit_log (admin_id, action, table_name, record_id, old_value, new_value) VALUES (
-  @current_admin_id, 'UPDATE', 'subjects', OLD.subject_id,
-  CONCAT('subject_name: ', OLD.subject_name, ', teacher_id: ', OLD.teacher_id),
-  CONCAT('subject_name: ', NEW.subject_name, ', teacher_id: ', NEW.teacher_id)
-);
-
-CREATE TRIGGER after_subjects_delete
-AFTER DELETE ON subjects
-FOR EACH ROW
-INSERT INTO audit_log (admin_id, action, table_name, record_id, old_value) VALUES (
-  @current_admin_id, 'DELETE', 'subjects', OLD.subject_id,
-  CONCAT('subject_name: ', OLD.subject_name, ', teacher_id: ', OLD.teacher_id)
-);
-
-
--- ==============================	TRIGGERS: ATTENDANCE TABLE	==============================
-CREATE TRIGGER after_attendance_insert
-AFTER INSERT ON attendance
-FOR EACH ROW
-INSERT INTO audit_log (admin_id, action, table_name, record_id, new_value) VALUES (
-  @current_admin_id, 'INSERT', 'attendance', NEW.log_id,
-  CONCAT('student_id: ', NEW.student_id, ', date: ', NEW.log_date, ', status: ', NEW.status)
-);
-
-CREATE TRIGGER after_attendance_update
-AFTER UPDATE ON attendance
-FOR EACH ROW
-INSERT INTO audit_log (admin_id, action, table_name, record_id, old_value, new_value) VALUES (
-  @current_admin_id, 'UPDATE', 'attendance', OLD.log_id,
-  CONCAT('student_id: ', OLD.student_id, ', date: ', OLD.log_date, ', status: ', OLD.status),
-  CONCAT('student_id: ', NEW.student_id, ', date: ', NEW.log_date, ', status: ', NEW.status)
-);
-
-CREATE TRIGGER after_attendance_delete
-AFTER DELETE ON attendance
-FOR EACH ROW
-INSERT INTO audit_log (admin_id, action, table_name, record_id, old_value) VALUES (
-  @current_admin_id, 'DELETE', 'attendance', OLD.log_id,
-  CONCAT('student_id: ', OLD.student_id, ', date: ', OLD.log_date, ', status: ', OLD.status)
-);
+INSERT INTO grade_scales (label, min_score, max_score, description) VALUES
+('A', 90, 100, 'Excellent mastery'),
+('B', 80, 89.99, 'Above average performance'),
+('C', 75, 79.99, 'Passing performance'),
+('F', 0, 74.99, 'Needs remediation');

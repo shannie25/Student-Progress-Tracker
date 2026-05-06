@@ -17,6 +17,11 @@
   margin-bottom: 22px;
 }
 
+.grades-status-message {
+  max-width: 760px;
+  margin-bottom: 18px;
+}
+
 .grades-management-header h1 {
   color: #050505;
   font-size: 24px;
@@ -29,6 +34,10 @@
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.grades-file-input {
+  display: none;
 }
 
 .grades-management-actions button {
@@ -523,6 +532,11 @@
   margin-top: 20px;
   padding: 18px 32px 16px;
   background: #f1f1f2;
+}
+
+.add-grades-validation-message {
+  width: calc(100% - 64px);
+  margin: 18px 32px 0;
 }
 
 .add-grades-modal-actions button {

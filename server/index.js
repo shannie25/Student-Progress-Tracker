@@ -1,12 +1,593 @@
 const express = require("express");
 const cors = require("cors");
+const crypto = require("crypto");
 const { pool, testConnection } = require("./db");
 
 const app = express();
 const PORT = Number(process.env.PORT || 5000);
+const PASSWORD_HASH_PREFIX = "p2";
+const PASSWORD_ITERATIONS = 120000;
+const PASSWORD_KEY_LENGTH = 32;
+const PASSWORD_DIGEST = "sha256";
+const MAX_LOGIN_ATTEMPTS = 5;
+const ACCOUNT_LOCK_MS = 15 * 60 * 1000;
+const PASSWORD_RESET_EXPIRY_MS = 20 * 60 * 1000;
+const SESSION_COOKIE_NAME = "classiq_session";
+const SESSION_EXPIRY_MS = 30 * 60 * 1000;
+const API_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const API_RATE_LIMIT_MAX_REQUESTS = 300;
+const loginAttempts = new Map();
+const passwordResetTokens = new Map();
+const sessions = new Map();
+const apiRateLimits = new Map();
 
-app.use(cors());
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || /^http:\/\/localhost:517\d+$/.test(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+}));
 app.use(express.json());
+
+const getClientIp = (req) => req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+
+const logRequest = (req, res, next) => {
+  const startedAt = Date.now();
+
+  res.on("finish", () => {
+    console.info(`${req.method} ${req.path} ${res.statusCode} ${Date.now() - startedAt}ms ip=${getClientIp(req)}`);
+  });
+
+  next();
+};
+
+const safeLogError = (message, error) => {
+  console.error(`${message}: ${error?.code || error?.name || "Error"}`);
+};
+
+const enforceHttpsInProduction = (req, res, next) => {
+  if (process.env.NODE_ENV === "production" && !req.secure && req.headers["x-forwarded-proto"] !== "https") {
+    return res.status(403).json({ message: "HTTPS is required" });
+  }
+
+  return next();
+};
+
+const apiRateLimiter = (req, res, next) => {
+  if (!req.path.startsWith("/api")) {
+    return next();
+  }
+
+  const key = getClientIp(req);
+  const now = Date.now();
+  const current = apiRateLimits.get(key) || { count: 0, resetAt: now + API_RATE_LIMIT_WINDOW_MS };
+
+  if (now > current.resetAt) {
+    apiRateLimits.set(key, { count: 1, resetAt: now + API_RATE_LIMIT_WINDOW_MS });
+    return next();
+  }
+
+  if (current.count >= API_RATE_LIMIT_MAX_REQUESTS) {
+    return res.status(429).json({ message: "Too many requests. Please try again later." });
+  }
+
+  current.count += 1;
+  apiRateLimits.set(key, current);
+  return next();
+};
+
+app.use(enforceHttpsInProduction);
+app.use(logRequest);
+app.use(apiRateLimiter);
+
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || ""));
+const isValidUserId = (id) => /^[A-Za-z0-9 _-]{2,40}$/.test(String(id || ""));
+
+const stripControlCharacters = (value) => {
+  return Array.from(value).filter((character) => {
+    const code = character.charCodeAt(0);
+
+    return code > 31 && code !== 127;
+  }).join("");
+};
+
+const sanitizeText = (value, maxLength = 255) => {
+  return stripControlCharacters(String(value || "").trim())
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .slice(0, maxLength);
+};
+
+const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
+
+const normalizeRole = (role) => String(role || "").trim().toLowerCase();
+
+const normalizeIdentifier = (identifier) => String(identifier || "").trim();
+
+const validatePassword = (password) => {
+  const value = String(password || "");
+
+  if (value.length < 8) return "Password must be at least 8 characters";
+  if (!/[A-Z]/.test(value)) return "Password must include at least one uppercase letter";
+  if (!/[0-9]/.test(value)) return "Password must include at least one number";
+  if (!/[^A-Za-z0-9]/.test(value)) return "Password must include at least one special character";
+
+  return "";
+};
+
+const hashPassword = (password) => {
+  const salt = crypto.randomBytes(16).toString("base64url");
+  const hash = crypto
+    .pbkdf2Sync(String(password), salt, PASSWORD_ITERATIONS, PASSWORD_KEY_LENGTH, PASSWORD_DIGEST)
+    .toString("base64url");
+
+  return `${PASSWORD_HASH_PREFIX}$${PASSWORD_ITERATIONS}$${salt}$${hash}`;
+};
+
+const timingSafeEqual = (left, right) => {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+};
+
+const verifyPassword = (password, storedPassword) => {
+  if (!storedPassword) return false;
+
+  if (!String(storedPassword).startsWith(`${PASSWORD_HASH_PREFIX}$`) && !String(storedPassword).startsWith("pbkdf2_sha256$")) {
+    return String(storedPassword) === String(password);
+  }
+
+  const [prefix, iterations, salt, storedHash] = String(storedPassword).split("$");
+  const keyLength = prefix === "pbkdf2_sha256" ? 64 : PASSWORD_KEY_LENGTH;
+  const encoding = prefix === "pbkdf2_sha256" ? "hex" : "base64url";
+  const candidateHash = crypto
+    .pbkdf2Sync(String(password), salt, Number(iterations), keyLength, PASSWORD_DIGEST)
+    .toString(encoding);
+
+  return timingSafeEqual(candidateHash, storedHash);
+};
+
+const getAttemptKey = (identifier, role) => `${role}:${String(identifier).trim().toLowerCase()}`;
+
+const getLockedAttempt = (key) => {
+  const attempt = loginAttempts.get(key);
+
+  if (!attempt?.lockedUntil) return null;
+  if (Date.now() > attempt.lockedUntil) {
+    loginAttempts.delete(key);
+    return null;
+  }
+
+  return attempt;
+};
+
+const recordFailedLogin = (key) => {
+  const current = loginAttempts.get(key) || { count: 0, lockedUntil: null };
+  const count = current.count + 1;
+  const lockedUntil = count >= MAX_LOGIN_ATTEMPTS ? Date.now() + ACCOUNT_LOCK_MS : null;
+
+  loginAttempts.set(key, { count, lockedUntil });
+  return { count, lockedUntil };
+};
+
+const createToken = () => crypto.randomBytes(32).toString("hex");
+
+const parseCookies = (cookieHeader = "") => {
+  return cookieHeader.split(";").reduce((cookies, cookiePart) => {
+    const [rawName, ...rawValue] = cookiePart.trim().split("=");
+
+    if (rawName) {
+      cookies[rawName] = decodeURIComponent(rawValue.join("="));
+    }
+
+    return cookies;
+  }, {});
+};
+
+const setAuthCookie = (res, token) => {
+  res.cookie(SESSION_COOKIE_NAME, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: false,
+    maxAge: SESSION_EXPIRY_MS,
+    path: "/",
+  });
+};
+
+const clearAuthCookie = (res) => {
+  res.clearCookie(SESSION_COOKIE_NAME, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: false,
+    path: "/",
+  });
+};
+
+const getSessionFromRequest = (req) => {
+  const cookies = parseCookies(req.headers.cookie);
+  const token = cookies[SESSION_COOKIE_NAME];
+  const session = token ? sessions.get(token) : null;
+
+  if (!token || !session) {
+    return null;
+  }
+
+  if (Date.now() > session.expiresAt) {
+    sessions.delete(token);
+    return null;
+  }
+
+  return { token, ...session };
+};
+
+const requireAuth = (req, res, next) => {
+  const session = getSessionFromRequest(req);
+
+  if (!session) {
+    clearAuthCookie(res);
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  req.sessionToken = session.token;
+  req.user = session.user;
+  return next();
+};
+
+const requireRole = (...roles) => (req, res, next) => {
+  if (!roles.includes(req.user?.role)) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
+  return next();
+};
+
+const createSession = (user) => {
+  const token = createToken();
+  sessions.set(token, {
+    user,
+    expiresAt: Date.now() + SESSION_EXPIRY_MS,
+  });
+
+  return token;
+};
+
+const columnExists = async (tableName, columnName) => {
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) AS count
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+       AND COLUMN_NAME = ?`,
+    [tableName, columnName]
+  );
+
+  return Number(rows[0]?.count || 0) > 0;
+};
+
+const tableExists = async (tableName) => {
+  const [rows] = await pool.query(
+    `SELECT COUNT(*) AS count
+     FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?`,
+    [tableName]
+  );
+
+  return Number(rows[0]?.count || 0) > 0;
+};
+
+const ensureColumn = async (tableName, columnName, definition) => {
+  if (!(await columnExists(tableName, columnName))) {
+    await pool.query(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+  }
+};
+
+const trySchemaChange = async (description, query) => {
+  try {
+    await pool.query(query);
+  } catch (error) {
+    safeLogError(`Schema update skipped (${description})`, error);
+  }
+};
+
+const ensureApplicationSchema = async () => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id VARCHAR(40) PRIMARY KEY,
+      email VARCHAR(100) NOT NULL UNIQUE,
+      firstname VARCHAR(100) NULL,
+      lastname VARCHAR(100) NULL,
+      name VARCHAR(180) NULL,
+      role VARCHAR(20) NOT NULL,
+      password VARCHAR(255) NOT NULL
+    ) ENGINE=InnoDB
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS subjects (
+      subject_id INT AUTO_INCREMENT PRIMARY KEY,
+      subject_name VARCHAR(100) NOT NULL,
+      teacher_id VARCHAR(40) NULL
+    ) ENGINE=InnoDB
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS grades (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      student_id VARCHAR(40) NOT NULL,
+      subject_id INT NULL,
+      subject VARCHAR(100) NULL,
+      teacher_id VARCHAR(40) NULL,
+      score DECIMAL(5,2) NOT NULL,
+      feedback TEXT,
+      school_year VARCHAR(20) NOT NULL DEFAULT '2025-2026',
+      semester VARCHAR(40) NOT NULL DEFAULT '1st Semester',
+      term VARCHAR(40) NOT NULL DEFAULT 'Prelim'
+    ) ENGINE=InnoDB
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS attendance (
+      log_id INT AUTO_INCREMENT PRIMARY KEY,
+      student_id VARCHAR(40) NOT NULL,
+      log_date DATE NOT NULL,
+      status VARCHAR(20) NOT NULL
+    ) ENGINE=InnoDB
+  `);
+
+  await trySchemaChange("subjects.teacher_id nullable", "ALTER TABLE subjects MODIFY teacher_id VARCHAR(40) NULL");
+
+  if (await tableExists("users")) {
+    await ensureColumn("users", "name", "VARCHAR(180) NULL");
+    await ensureColumn("users", "firstname", "VARCHAR(100) NULL");
+    await ensureColumn("users", "lastname", "VARCHAR(100) NULL");
+    await pool.query(
+      `UPDATE users
+       SET name = TRIM(CONCAT_WS(' ', firstname, lastname))
+       WHERE (name IS NULL OR name = '')
+         AND (firstname IS NOT NULL OR lastname IS NOT NULL)`
+    );
+  }
+
+  if (await tableExists("grades")) {
+    await ensureColumn("grades", "subject_id", "INT NULL");
+    await ensureColumn("grades", "subject", "VARCHAR(100) NULL");
+    await ensureColumn("grades", "teacher_id", "VARCHAR(40) NULL");
+    await ensureColumn("grades", "school_year", "VARCHAR(20) NOT NULL DEFAULT '2025-2026'");
+    await ensureColumn("grades", "semester", "VARCHAR(40) NOT NULL DEFAULT '1st Semester'");
+    await ensureColumn("grades", "term", "VARCHAR(40) NOT NULL DEFAULT 'Prelim'");
+    await trySchemaChange("grades.subject_id nullable", "ALTER TABLE grades MODIFY subject_id INT NULL");
+    await trySchemaChange("grades.score decimal", "ALTER TABLE grades MODIFY score DECIMAL(5,2) NOT NULL");
+  }
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS teacher_assignments (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      teacher_id VARCHAR(40) NOT NULL,
+      student_id VARCHAR(40) NOT NULL,
+      subject VARCHAR(100) NOT NULL,
+      course VARCHAR(100) DEFAULT '',
+      section VARCHAR(50) DEFAULT '',
+      school_year VARCHAR(20) NOT NULL DEFAULT '2025-2026',
+      semester VARCHAR(40) NOT NULL DEFAULT '1st Semester',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY unique_teacher_assignment (teacher_id, student_id, subject, school_year, semester)
+    ) ENGINE=InnoDB
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS courses (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      code VARCHAR(40) NOT NULL,
+      name VARCHAR(120) NOT NULL,
+      description VARCHAR(255) DEFAULT '',
+      teacher_id VARCHAR(40) NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY unique_course_code (code)
+    ) ENGINE=InnoDB
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS grade_scales (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      label VARCHAR(20) NOT NULL,
+      min_score DECIMAL(5,2) NOT NULL,
+      max_score DECIMAL(5,2) NOT NULL,
+      description VARCHAR(255) DEFAULT '',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS audit_log (
+      log_id INT AUTO_INCREMENT PRIMARY KEY,
+      admin_id VARCHAR(40) NULL,
+      action VARCHAR(50) NOT NULL,
+      table_name VARCHAR(100) NOT NULL,
+      record_id VARCHAR(80) NOT NULL,
+      old_value TEXT,
+      new_value TEXT,
+      changed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB
+  `);
+
+  await trySchemaChange("audit_log.admin_id nullable", "ALTER TABLE audit_log MODIFY admin_id VARCHAR(40) NULL");
+  await trySchemaChange("grades.semester default", "ALTER TABLE grades MODIFY semester VARCHAR(40) NOT NULL DEFAULT '1st Semester'");
+  await trySchemaChange("teacher_assignments.semester default", "ALTER TABLE teacher_assignments MODIFY semester VARCHAR(40) NOT NULL DEFAULT '1st Semester'");
+  await pool.query("UPDATE grades SET semester = '1st Semester' WHERE semester IN ('First Semester', 'Spring', 'Spring 2024')");
+  await pool.query("UPDATE grades SET semester = '2nd Semester' WHERE semester IN ('Second Semester', 'Fall', 'Fall 2024')");
+  await pool.query("UPDATE teacher_assignments SET semester = '1st Semester' WHERE semester IN ('First Semester', 'Spring', 'Spring 2024')");
+  await pool.query("UPDATE teacher_assignments SET semester = '2nd Semester' WHERE semester IN ('Second Semester', 'Fall', 'Fall 2024')");
+};
+
+const getUserNameExpression = (alias = "") => {
+  const prefix = alias ? `${alias}.` : "";
+
+  return `COALESCE(NULLIF(${prefix}name, ''), NULLIF(TRIM(CONCAT_WS(' ', ${prefix}firstname, ${prefix}lastname)), ''), ${prefix}id)`;
+};
+
+const normalizeSchoolYear = (value) => sanitizeText(value || "2025-2026", 20);
+
+const normalizeSemester = (value) => {
+  const semester = sanitizeText(value || "1st Semester", 40);
+  const lowerSemester = semester.toLowerCase();
+
+  if (["first semester", "1st semester", "spring", "spring 2024"].includes(lowerSemester)) {
+    return "1st Semester";
+  }
+
+  if (["second semester", "2nd semester", "fall", "fall 2024"].includes(lowerSemester)) {
+    return "2nd Semester";
+  }
+
+  return semester;
+};
+
+const normalizeTerm = (value) => sanitizeText(value || "Prelim", 40);
+
+const writeAuditLog = async (req, action, tableName, recordId, oldValue = null, newValue = null) => {
+  try {
+    await pool.query(
+      `INSERT INTO audit_log (admin_id, action, table_name, record_id, old_value, new_value)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        req.user?.id || null,
+        action,
+        tableName,
+        String(recordId),
+        oldValue ? JSON.stringify(oldValue) : null,
+        newValue ? JSON.stringify(newValue) : null,
+      ]
+    );
+  } catch (error) {
+    safeLogError("Audit log write failed", error);
+  }
+};
+
+const isAssignedStudent = async (teacherId, studentId, subject = "") => {
+  const params = [teacherId, studentId];
+  let subjectFilter = "";
+
+  if (subject) {
+    subjectFilter = " AND (subject = ? OR subject = '')";
+    params.push(subject);
+  }
+
+  const [rows] = await pool.query(
+    `SELECT id FROM teacher_assignments
+     WHERE teacher_id = ? AND student_id = ?${subjectFilter}
+     LIMIT 1`,
+    params
+  );
+
+  return rows.length > 0;
+};
+
+const getVisibleGrades = async (user) => {
+  const baseQuery = `SELECT
+      id,
+      student_id AS studentId,
+      COALESCE(NULLIF(subject, ''), CONCAT('Subject ', COALESCE(subject_id, ''))) AS subject,
+      score,
+      feedback,
+      teacher_id AS teacherId,
+      school_year AS schoolYear,
+      semester,
+      term
+    FROM grades`;
+
+  if (user.role === "student") {
+    const [rows] = await pool.query(`${baseQuery} WHERE student_id = ? ORDER BY id DESC`, [user.id]);
+    return rows;
+  }
+
+  if (user.role === "teacher") {
+    const [rows] = await pool.query(
+      `${baseQuery}
+       WHERE teacher_id = ?
+          OR student_id IN (SELECT student_id FROM teacher_assignments WHERE teacher_id = ?)
+       ORDER BY id DESC`,
+      [user.id, user.id]
+    );
+    return rows;
+  }
+
+  const [rows] = await pool.query(`${baseQuery} ORDER BY id DESC`);
+  return rows;
+};
+
+const getVisibleAttendance = async (user) => {
+  const baseQuery = `SELECT
+      log_id AS id,
+      student_id AS studentId,
+      log_date AS date,
+      status
+    FROM attendance`;
+
+  if (user.role === "student") {
+    const [rows] = await pool.query(`${baseQuery} WHERE student_id = ? ORDER BY log_date DESC`, [user.id]);
+    return rows;
+  }
+
+  if (user.role === "teacher") {
+    const [rows] = await pool.query(
+      `${baseQuery}
+       WHERE student_id IN (SELECT student_id FROM teacher_assignments WHERE teacher_id = ?)
+       ORDER BY log_date DESC`,
+      [user.id]
+    );
+    return rows;
+  }
+
+  const [rows] = await pool.query(`${baseQuery} ORDER BY log_date DESC`);
+  return rows;
+};
+
+const buildClassAnalytics = (grades) => {
+  const gradesByStudent = grades.reduce((studentMap, grade) => {
+    const currentGrades = studentMap.get(grade.studentId) || [];
+    currentGrades.push(grade);
+    studentMap.set(grade.studentId, currentGrades);
+    return studentMap;
+  }, new Map());
+
+  const studentAverages = Array.from(gradesByStudent.entries()).map(([studentId, studentGrades]) => {
+    const average = studentGrades.reduce((total, grade) => total + Number(grade.score || 0), 0) / studentGrades.length;
+    return { studentId, average: Number(average.toFixed(2)) };
+  });
+
+  const classAverage = grades.length
+    ? Number((grades.reduce((total, grade) => total + Number(grade.score || 0), 0) / grades.length).toFixed(2))
+    : 0;
+  const distribution = { A: 0, B: 0, C: 0, D: 0, F: 0 };
+
+  grades.forEach((grade) => {
+    const score = Number(grade.score || 0);
+    if (score >= 90) distribution.A += 1;
+    else if (score >= 80) distribution.B += 1;
+    else if (score >= 75) distribution.C += 1;
+    else if (score >= 60) distribution.D += 1;
+    else distribution.F += 1;
+  });
+
+  const sortedAverages = [...studentAverages].sort((left, right) => right.average - left.average);
+
+  return {
+    classAverage,
+    distribution,
+    topPerformers: sortedAverages.slice(0, 5),
+    bottomPerformers: sortedAverages.slice(-5).reverse(),
+  };
+};
 
 app.get("/", (_req, res) => {
   res.send("API is running");
@@ -17,59 +598,91 @@ app.get("/api/health", async (_req, res) => {
     await testConnection();
     res.json({ ok: true, message: "Database connected" });
   } catch (error) {
-    console.error("Database health check failed:", error);
+    safeLogError("Database health check failed", error);
     res.status(500).json({ ok: false, message: "Database connection failed" });
   }
 });
 
-const getUsers = async (_req, res) => {
+const getUsers = async (req, res) => {
   try {
-    const [rows] = await pool.query(
-      "SELECT id, email, name, role, password FROM users ORDER BY name ASC"
-    );
+    let rows;
+    const nameExpression = getUserNameExpression();
+
+    if (req.user.role === "admin") {
+      [rows] = await pool.query(`SELECT id, email, ${nameExpression} AS name, role FROM users ORDER BY name ASC`);
+    } else if (req.user.role === "teacher") {
+      [rows] = await pool.query(
+        `SELECT DISTINCT u.id, u.email, ${getUserNameExpression("u")} AS name, u.role
+         FROM users u
+         WHERE u.role = 'student'
+           AND (
+             EXISTS (SELECT 1 FROM teacher_assignments ta WHERE ta.student_id = u.id AND ta.teacher_id = ?)
+             OR EXISTS (SELECT 1 FROM grades g WHERE g.student_id = u.id AND g.teacher_id = ?)
+           )
+         ORDER BY name ASC`,
+        [req.user.id, req.user.id]
+      );
+    } else {
+      [rows] = await pool.query(
+        `SELECT id, email, ${nameExpression} AS name, role FROM users WHERE id = ? LIMIT 1`,
+        [req.user.id]
+      );
+    }
+
     res.json(rows);
   } catch (error) {
-    console.error("Failed to fetch users:", error);
+    safeLogError("Failed to fetch users", error);
     res.status(500).json({ message: "Failed to fetch users" });
   }
 };
 
-const getGrades = async (_req, res) => {
+const getGrades = async (req, res) => {
   try {
-    const [rows] = await pool.query(
-      `SELECT
-        id,
-        student_id AS studentId,
-        subject,
-        score,
-        feedback
-      FROM grades
-      ORDER BY id DESC`
-    );
-    res.json(rows);
+    res.json(await getVisibleGrades(req.user));
   } catch (error) {
-    console.error("Failed to fetch grades:", error);
+    safeLogError("Failed to fetch grades", error);
     res.status(500).json({ message: "Failed to fetch grades" });
   }
 };
 
-app.get("/api/users", getUsers);
-app.get("/users", getUsers);
-app.get("/api/grades", getGrades);
-app.get("/grades", getGrades);
+app.get("/api/session", requireAuth, (req, res) => {
+  res.json(req.user);
+});
+
+app.get("/api/users", requireAuth, getUsers);
+app.get("/users", requireAuth, getUsers);
+app.get("/api/grades", requireAuth, getGrades);
+app.get("/grades", requireAuth, getGrades);
 
 app.post("/api/login", async (req, res) => {
-  const { identifier, password, role } = req.body;
+  const { identifier: rawIdentifier, password, role: rawRole } = req.body;
+  const identifier = normalizeIdentifier(rawIdentifier);
+  const role = normalizeRole(rawRole);
 
   if (!identifier || !password || !role) {
     return res.status(400).json({ message: "Identifier, password, and role are required" });
   }
 
+  if (!["admin", "teacher", "student"].includes(role)) {
+    return res.status(400).json({ message: "Invalid role" });
+  }
+
+  const attemptKey = getAttemptKey(identifier, role);
+  const lockedAttempt = getLockedAttempt(attemptKey);
+
+  if (lockedAttempt) {
+    return res.status(423).json({
+      message: "Account locked after 5 failed login attempts. Please try again later.",
+      lockedUntil: lockedAttempt.lockedUntil,
+    });
+  }
+
   const field = role === "student" ? "id" : "email";
 
   try {
+    const nameExpression = getUserNameExpression();
     const [rows] = await pool.query(
-      `SELECT id, email, name, role, password
+      `SELECT id, email, ${nameExpression} AS name, role, password
        FROM users
        WHERE ${field} = ? AND role = ?
        LIMIT 1`,
@@ -78,31 +691,84 @@ app.post("/api/login", async (req, res) => {
 
     const user = rows[0];
 
-    if (!user || user.password !== password) {
+    if (!user || !verifyPassword(password, user.password)) {
+      const failedAttempt = recordFailedLogin(attemptKey);
+
+      if (failedAttempt.lockedUntil) {
+        return res.status(423).json({
+          message: "Account locked after 5 failed login attempts. Please try again later.",
+          lockedUntil: failedAttempt.lockedUntil,
+        });
+      }
+
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    res.json({
+    if (!String(user.password).startsWith(`${PASSWORD_HASH_PREFIX}$`)) {
+      await pool.query("UPDATE users SET password = ? WHERE id = ?", [hashPassword(password), user.id]);
+    }
+
+    loginAttempts.delete(attemptKey);
+
+    const responseUser = {
       id: user.id,
       email: user.email,
       name: user.name,
       role: user.role,
-    });
+    };
+
+    const token = createSession(responseUser);
+    setAuthCookie(res, token);
+
+    res.json(responseUser);
   } catch (error) {
-    console.error("Login failed:", error);
+    safeLogError("Login failed", error);
     res.status(500).json({ message: "Login failed" });
   }
 });
 
 app.post("/api/register", async (req, res) => {
-  const { studentId, email, firstName, middleName, lastName, password, role = "student" } = req.body;
-  const normalizedRole = role === "teacher" ? "teacher" : "student";
+  const {
+    studentId: rawStudentId,
+    email: rawEmail,
+    firstName: rawFirstName,
+    middleName: rawMiddleName,
+    lastName: rawLastName,
+    password,
+    confirmPassword,
+    role = "student",
+  } = req.body;
+  const studentId = normalizeIdentifier(rawStudentId);
+  const email = normalizeEmail(rawEmail);
+  const firstName = sanitizeText(rawFirstName, 60);
+  const middleName = sanitizeText(rawMiddleName, 60);
+  const lastName = sanitizeText(rawLastName, 60);
+  const normalizedRole = normalizeRole(role) === "teacher" ? "teacher" : "student";
 
   if (!studentId || !email || !firstName || !lastName || !password) {
     return res.status(400).json({ message: "Missing required registration fields" });
   }
 
+  if (!isValidUserId(studentId)) {
+    return res.status(400).json({ message: "ID may only contain letters, numbers, spaces, hyphens, and underscores" });
+  }
+
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ message: "Please enter a valid email address" });
+  }
+
+  if (confirmPassword !== undefined && password !== confirmPassword) {
+    return res.status(400).json({ message: "Passwords do not match" });
+  }
+
+  const passwordError = validatePassword(password);
+
+  if (passwordError) {
+    return res.status(400).json({ message: passwordError });
+  }
+
   const fullName = [firstName, middleName, lastName].filter(Boolean).join(" ");
+  const passwordHash = hashPassword(password);
 
   try {
     const [existingUsers] = await pool.query(
@@ -115,8 +781,9 @@ app.post("/api/register", async (req, res) => {
     }
 
     await pool.query(
-      "INSERT INTO users (id, email, name, role, password) VALUES (?, ?, ?, ?, ?)",
-      [studentId, email, fullName, normalizedRole, password]
+      `INSERT INTO users (id, email, firstname, lastname, name, role, password)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [studentId, email, firstName, lastName, fullName, normalizedRole, passwordHash]
     );
 
     res.status(201).json({
@@ -126,50 +793,804 @@ app.post("/api/register", async (req, res) => {
       role: normalizedRole,
     });
   } catch (error) {
-    console.error("Registration failed:", error);
+    safeLogError("Registration failed", error);
     res.status(500).json({ message: "Registration failed" });
   }
 });
 
-app.post("/api/grades", async (req, res) => {
-  const { studentId, subject, score, feedback } = req.body;
+app.post("/api/logout", (req, res) => {
+  const session = getSessionFromRequest(req);
 
-  if (!studentId || !subject || Number.isNaN(Number(score))) {
-    return res.status(400).json({ message: "studentId, subject, and score are required" });
+  if (session?.token) {
+    sessions.delete(session.token);
+  }
+
+  clearAuthCookie(res);
+  res.json({ ok: true });
+});
+
+app.post("/api/password-reset/request", async (req, res) => {
+  const identifier = normalizeIdentifier(req.body.identifier);
+  const role = normalizeRole(req.body.role);
+
+  if (!identifier || !["admin", "teacher", "student"].includes(role)) {
+    return res.status(400).json({ message: "Identifier and valid role are required" });
+  }
+
+  const field = role === "student" ? "id" : "email";
+
+  try {
+    const nameExpression = getUserNameExpression();
+    const [rows] = await pool.query(
+      `SELECT id, email, ${nameExpression} AS name, role FROM users WHERE ${field} = ? AND role = ? LIMIT 1`,
+      [identifier, role]
+    );
+
+    const user = rows[0];
+
+    if (user) {
+      const token = createToken();
+      passwordResetTokens.set(token, {
+        userId: user.id,
+        expiresAt: Date.now() + PASSWORD_RESET_EXPIRY_MS,
+      });
+    }
+
+    res.json({ message: "If the account exists, a reset link has been generated and will expire in 20 minutes." });
+  } catch (error) {
+    safeLogError("Password reset request failed", error);
+    res.status(500).json({ message: "Password reset request failed" });
+  }
+});
+
+app.post("/api/password-reset/confirm", async (req, res) => {
+  const { token, password, confirmPassword } = req.body;
+  const resetSession = passwordResetTokens.get(token);
+
+  if (!resetSession || Date.now() > resetSession.expiresAt) {
+    if (token) passwordResetTokens.delete(token);
+    return res.status(400).json({ message: "Password reset link is invalid or expired" });
+  }
+
+  if (password !== confirmPassword) {
+    return res.status(400).json({ message: "Passwords do not match" });
+  }
+
+  const passwordError = validatePassword(password);
+
+  if (passwordError) {
+    return res.status(400).json({ message: passwordError });
   }
 
   try {
+    await pool.query("UPDATE users SET password = ? WHERE id = ?", [hashPassword(password), resetSession.userId]);
+    passwordResetTokens.delete(token);
+    res.json({ message: "Password has been reset successfully" });
+  } catch (error) {
+    safeLogError("Password reset failed", error);
+    res.status(500).json({ message: "Password reset failed" });
+  }
+});
+
+app.post("/api/grades", requireAuth, requireRole("admin", "teacher"), async (req, res) => {
+  const studentId = normalizeIdentifier(req.body.studentId);
+  const subject = sanitizeText(req.body.subject, 80);
+  const score = Number(req.body.score);
+  const feedback = sanitizeText(req.body.feedback, 500);
+  const schoolYear = normalizeSchoolYear(req.body.schoolYear);
+  const semester = normalizeSemester(req.body.semester);
+  const term = normalizeTerm(req.body.term);
+
+  if (!studentId || !subject || !Number.isFinite(score)) {
+    return res.status(400).json({ message: "studentId, subject, and score are required" });
+  }
+
+  if (!isValidUserId(studentId)) {
+    return res.status(400).json({ message: "Invalid student ID format" });
+  }
+
+  if (score < 0 || score > 100) {
+    return res.status(400).json({ message: "Score must be between 0 and 100" });
+  }
+
+  try {
+    const teacherId = req.user.role === "teacher" ? req.user.id : null;
+
+    if (req.user.role === "teacher" && !(await isAssignedStudent(req.user.id, studentId, subject))) {
+      return res.status(403).json({ message: "You can only add grades for assigned students" });
+    }
+
+    const [studentRows] = await pool.query("SELECT id FROM users WHERE id = ? AND role = 'student' LIMIT 1", [studentId]);
+
+    if (studentRows.length === 0) {
+      return res.status(404).json({ message: "Student account not found" });
+    }
+
     const [result] = await pool.query(
-      "INSERT INTO grades (student_id, subject, score, feedback) VALUES (?, ?, ?, ?)",
-      [String(studentId), subject, Number(score), feedback || ""]
+      `INSERT INTO grades (student_id, subject, score, feedback, teacher_id, school_year, semester, term)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [studentId, subject, score, feedback || "", teacherId, schoolYear, semester, term]
     );
 
-    res.status(201).json({
+    const createdGrade = {
       id: result.insertId,
-      studentId: String(studentId),
+      studentId,
       subject,
-      score: Number(score),
+      score,
       feedback: feedback || "",
+      teacherId,
+      schoolYear,
+      semester,
+      term,
+    };
+
+    await writeAuditLog(req, "INSERT", "grades", result.insertId, null, createdGrade);
+
+    res.status(201).json({
+      ...createdGrade,
     });
   } catch (error) {
-    console.error("Failed to create grade:", error);
+    safeLogError("Failed to create grade", error);
     res.status(500).json({ message: "Failed to create grade" });
   }
 });
 
+app.put("/api/grades/:id", requireAuth, requireRole("admin", "teacher"), async (req, res) => {
+  const gradeId = Number(req.params.id);
+  const subject = sanitizeText(req.body.subject, 80);
+  const score = Number(req.body.score);
+  const feedback = sanitizeText(req.body.feedback, 500);
+  const schoolYear = normalizeSchoolYear(req.body.schoolYear);
+  const semester = normalizeSemester(req.body.semester);
+  const term = normalizeTerm(req.body.term);
+
+  if (!Number.isInteger(gradeId) || gradeId <= 0) {
+    return res.status(400).json({ message: "Invalid grade record" });
+  }
+
+  if (!subject || !Number.isFinite(score)) {
+    return res.status(400).json({ message: "Subject and score are required" });
+  }
+
+  if (score < 0 || score > 100) {
+    return res.status(400).json({ message: "Score must be between 0 and 100" });
+  }
+
+  try {
+    const [existingRows] = await pool.query(
+      `SELECT id, student_id AS studentId, subject, score, feedback, teacher_id AS teacherId, school_year AS schoolYear, semester, term
+       FROM grades WHERE id = ? LIMIT 1`,
+      [gradeId]
+    );
+    const existingGrade = existingRows[0];
+
+    if (!existingGrade) {
+      return res.status(404).json({ message: "Grade record not found" });
+    }
+
+    if (req.user.role === "teacher" && existingGrade.teacherId !== req.user.id) {
+      return res.status(403).json({ message: "You can only edit grades you added" });
+    }
+
+    await pool.query(
+      "UPDATE grades SET subject = ?, score = ?, feedback = ?, school_year = ?, semester = ?, term = ? WHERE id = ?",
+      [subject, score, feedback || "", schoolYear, semester, term, gradeId]
+    );
+
+    const updatedGrade = {
+      id: gradeId,
+      studentId: existingGrade.studentId,
+      subject,
+      score,
+      feedback: feedback || "",
+      teacherId: existingGrade.teacherId,
+      schoolYear,
+      semester,
+      term,
+    };
+
+    await writeAuditLog(req, "UPDATE", "grades", gradeId, existingGrade, updatedGrade);
+
+    res.json({
+      ...updatedGrade,
+    });
+  } catch (error) {
+    safeLogError("Failed to update grade", error);
+    res.status(500).json({ message: "Failed to update grade" });
+  }
+});
+
+app.delete("/api/grades/:id", requireAuth, requireRole("admin", "teacher"), async (req, res) => {
+  const gradeId = Number(req.params.id);
+
+  if (!Number.isInteger(gradeId) || gradeId <= 0) {
+    return res.status(400).json({ message: "Invalid grade record" });
+  }
+
+  try {
+    const [existingRows] = await pool.query(
+      "SELECT id, student_id AS studentId, teacher_id AS teacherId FROM grades WHERE id = ? LIMIT 1",
+      [gradeId]
+    );
+    const existingGrade = existingRows[0];
+
+    if (!existingGrade) {
+      return res.status(404).json({ message: "Grade record not found" });
+    }
+
+    if (req.user.role === "teacher" && existingGrade.teacherId !== req.user.id) {
+      return res.status(403).json({ message: "You can only delete grades you added" });
+    }
+
+    await pool.query("DELETE FROM grades WHERE id = ?", [gradeId]);
+    await writeAuditLog(req, "DELETE", "grades", gradeId, existingGrade, null);
+    res.json({ ok: true });
+  } catch (error) {
+    safeLogError("Failed to delete grade", error);
+    res.status(500).json({ message: "Failed to delete grade" });
+  }
+});
+
+app.get("/api/attendance", requireAuth, async (req, res) => {
+  try {
+    res.json(await getVisibleAttendance(req.user));
+  } catch (error) {
+    safeLogError("Failed to fetch attendance", error);
+    res.status(500).json({ message: "Failed to fetch attendance" });
+  }
+});
+
+app.post("/api/attendance", requireAuth, requireRole("admin", "teacher"), async (req, res) => {
+  const studentId = normalizeIdentifier(req.body.studentId);
+  const date = sanitizeText(req.body.date, 20);
+  const status = sanitizeText(req.body.status, 20).toLowerCase();
+
+  if (!studentId || !date || !["present", "absent", "late"].includes(status)) {
+    return res.status(400).json({ message: "studentId, date, and valid status are required" });
+  }
+
+  try {
+    if (req.user.role === "teacher" && !(await isAssignedStudent(req.user.id, studentId))) {
+      return res.status(403).json({ message: "You can only manage attendance for assigned students" });
+    }
+
+    const [result] = await pool.query(
+      "INSERT INTO attendance (student_id, log_date, status) VALUES (?, ?, ?)",
+      [studentId, date, status]
+    );
+    const createdRecord = { id: result.insertId, studentId, date, status };
+    await writeAuditLog(req, "INSERT", "attendance", result.insertId, null, createdRecord);
+    res.status(201).json(createdRecord);
+  } catch (error) {
+    safeLogError("Failed to create attendance record", error);
+    res.status(500).json({ message: "Failed to create attendance record" });
+  }
+});
+
+app.get("/api/analytics/class", requireAuth, requireRole("admin", "teacher"), async (req, res) => {
+  try {
+    res.json(buildClassAnalytics(await getVisibleGrades(req.user)));
+  } catch (error) {
+    safeLogError("Failed to build class analytics", error);
+    res.status(500).json({ message: "Failed to build class analytics" });
+  }
+});
+
+app.post("/api/users", requireAuth, requireRole("admin"), async (req, res) => {
+  const id = normalizeIdentifier(req.body.id || req.body.studentId);
+  const email = normalizeEmail(req.body.email);
+  const name = sanitizeText(req.body.name, 180);
+  const role = normalizeRole(req.body.role);
+  const password = String(req.body.password || "");
+
+  if (!id || !email || !name || !["admin", "teacher", "student"].includes(role) || !password) {
+    return res.status(400).json({ message: "id, name, email, role, and password are required" });
+  }
+
+  if (!isValidUserId(id)) {
+    return res.status(400).json({ message: "Invalid ID format" });
+  }
+
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ message: "Please enter a valid email address" });
+  }
+
+  const passwordError = validatePassword(password);
+
+  if (passwordError) {
+    return res.status(400).json({ message: passwordError });
+  }
+
+  const [firstName, ...remainingNames] = name.split(" ");
+  const lastName = remainingNames.join(" ") || firstName;
+
+  try {
+    await pool.query(
+      `INSERT INTO users (id, email, firstname, lastname, name, role, password)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, email, firstName, lastName, name, role, hashPassword(password)]
+    );
+    const createdUser = { id, email, name, role };
+    await writeAuditLog(req, "INSERT", "users", id, null, createdUser);
+    res.status(201).json(createdUser);
+  } catch (error) {
+    safeLogError("Failed to create user", error);
+    res.status(500).json({ message: "Failed to create user" });
+  }
+});
+
+app.put("/api/users/:id", requireAuth, requireRole("admin"), async (req, res) => {
+  const id = normalizeIdentifier(req.params.id);
+  const email = normalizeEmail(req.body.email);
+  const name = sanitizeText(req.body.name, 180);
+  const role = normalizeRole(req.body.role);
+
+  if (!id || !email || !name || !["admin", "teacher", "student"].includes(role)) {
+    return res.status(400).json({ message: "name, email, and role are required" });
+  }
+
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ message: "Please enter a valid email address" });
+  }
+
+  const [firstName, ...remainingNames] = name.split(" ");
+  const lastName = remainingNames.join(" ") || firstName;
+
+  try {
+    const [existingRows] = await pool.query(`SELECT id, email, ${getUserNameExpression()} AS name, role FROM users WHERE id = ? LIMIT 1`, [id]);
+
+    if (existingRows.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    await pool.query(
+      "UPDATE users SET email = ?, firstname = ?, lastname = ?, name = ?, role = ? WHERE id = ?",
+      [email, firstName, lastName, name, role, id]
+    );
+    const updatedUser = { id, email, name, role };
+    await writeAuditLog(req, "UPDATE", "users", id, existingRows[0], updatedUser);
+    res.json(updatedUser);
+  } catch (error) {
+    safeLogError("Failed to update user", error);
+    res.status(500).json({ message: "Failed to update user" });
+  }
+});
+
+app.delete("/api/users/:id", requireAuth, requireRole("admin"), async (req, res) => {
+  const id = normalizeIdentifier(req.params.id);
+
+  if (!id || id === req.user.id) {
+    return res.status(400).json({ message: "Invalid user delete request" });
+  }
+
+  try {
+    const [existingRows] = await pool.query(`SELECT id, email, ${getUserNameExpression()} AS name, role FROM users WHERE id = ? LIMIT 1`, [id]);
+
+    if (existingRows.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    await pool.query("DELETE FROM attendance WHERE student_id = ?", [id]);
+    await pool.query("DELETE FROM grades WHERE student_id = ?", [id]);
+    await pool.query("UPDATE grades SET teacher_id = NULL WHERE teacher_id = ?", [id]);
+    await pool.query("UPDATE subjects SET teacher_id = NULL WHERE teacher_id = ?", [id]);
+    await pool.query("UPDATE courses SET teacher_id = NULL WHERE teacher_id = ?", [id]);
+    await pool.query("DELETE FROM teacher_assignments WHERE teacher_id = ? OR student_id = ?", [id, id]);
+    await pool.query("DELETE FROM users WHERE id = ?", [id]);
+    await writeAuditLog(req, "DELETE", "users", id, existingRows[0], null);
+    res.json({ ok: true });
+  } catch (error) {
+    safeLogError("Failed to delete user", error);
+    res.status(500).json({ message: "Failed to delete user" });
+  }
+});
+
+app.post("/api/users/:id/reset-password", requireAuth, requireRole("admin"), async (req, res) => {
+  const id = normalizeIdentifier(req.params.id);
+  const password = String(req.body.password || "");
+  const passwordError = validatePassword(password);
+
+  if (!id || passwordError) {
+    return res.status(400).json({ message: passwordError || "User ID is required" });
+  }
+
+  try {
+    await pool.query("UPDATE users SET password = ? WHERE id = ?", [hashPassword(password), id]);
+    await writeAuditLog(req, "RESET_PASSWORD", "users", id, null, { id });
+    res.json({ message: "Password reset successfully" });
+  } catch (error) {
+    safeLogError("Failed to reset password", error);
+    res.status(500).json({ message: "Failed to reset password" });
+  }
+});
+
+app.get("/api/teacher-assignments", requireAuth, requireRole("admin", "teacher"), async (req, res) => {
+  try {
+    const params = [];
+    const roleFilter = req.user.role === "teacher" ? "WHERE teacher_id = ?" : "";
+
+    if (req.user.role === "teacher") {
+      params.push(req.user.id);
+    }
+
+    const [rows] = await pool.query(
+      `SELECT id, teacher_id AS teacherId, student_id AS studentId, subject, course, section, school_year AS schoolYear, semester
+       FROM teacher_assignments
+       ${roleFilter}
+       ORDER BY created_at DESC`,
+      params
+    );
+    res.json(rows);
+  } catch (error) {
+    safeLogError("Failed to fetch teacher assignments", error);
+    res.status(500).json({ message: "Failed to fetch teacher assignments" });
+  }
+});
+
+app.post("/api/teacher-assignments", requireAuth, requireRole("admin"), async (req, res) => {
+  const teacherId = normalizeIdentifier(req.body.teacherId);
+  const studentId = normalizeIdentifier(req.body.studentId);
+  const subject = sanitizeText(req.body.subject, 100);
+  const course = sanitizeText(req.body.course, 100);
+  const section = sanitizeText(req.body.section, 50);
+  const schoolYear = normalizeSchoolYear(req.body.schoolYear);
+  const semester = normalizeSemester(req.body.semester);
+
+  if (!teacherId || !studentId || !subject) {
+    return res.status(400).json({ message: "teacherId, studentId, and subject are required" });
+  }
+
+  try {
+    const [result] = await pool.query(
+      `INSERT INTO teacher_assignments (teacher_id, student_id, subject, course, section, school_year, semester)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE course = VALUES(course), section = VALUES(section)`,
+      [teacherId, studentId, subject, course, section, schoolYear, semester]
+    );
+    const assignment = { id: result.insertId, teacherId, studentId, subject, course, section, schoolYear, semester };
+    await writeAuditLog(req, "UPSERT", "teacher_assignments", result.insertId || `${teacherId}:${studentId}:${subject}`, null, assignment);
+    res.status(201).json(assignment);
+  } catch (error) {
+    safeLogError("Failed to save teacher assignment", error);
+    res.status(500).json({ message: "Failed to save teacher assignment" });
+  }
+});
+
+app.delete("/api/teacher-assignments/:id", requireAuth, requireRole("admin"), async (req, res) => {
+  const assignmentId = Number(req.params.id);
+
+  if (!Number.isInteger(assignmentId) || assignmentId <= 0) {
+    return res.status(400).json({ message: "Invalid assignment" });
+  }
+
+  try {
+    await pool.query("DELETE FROM teacher_assignments WHERE id = ?", [assignmentId]);
+    await writeAuditLog(req, "DELETE", "teacher_assignments", assignmentId);
+    res.json({ ok: true });
+  } catch (error) {
+    safeLogError("Failed to delete teacher assignment", error);
+    res.status(500).json({ message: "Failed to delete teacher assignment" });
+  }
+});
+
+app.get("/api/courses", requireAuth, async (_req, res) => {
+  try {
+    const [rows] = await pool.query("SELECT id, code, name, description, teacher_id AS teacherId FROM courses ORDER BY name ASC");
+    res.json(rows);
+  } catch (error) {
+    safeLogError("Failed to fetch courses", error);
+    res.status(500).json({ message: "Failed to fetch courses" });
+  }
+});
+
+app.post("/api/courses", requireAuth, requireRole("admin"), async (req, res) => {
+  const code = sanitizeText(req.body.code, 40).toUpperCase();
+  const name = sanitizeText(req.body.name, 120);
+  const description = sanitizeText(req.body.description, 255);
+  const teacherId = normalizeIdentifier(req.body.teacherId);
+
+  if (!code || !name) {
+    return res.status(400).json({ message: "Course code and name are required" });
+  }
+
+  try {
+    const [result] = await pool.query(
+      "INSERT INTO courses (code, name, description, teacher_id) VALUES (?, ?, ?, ?)",
+      [code, name, description, teacherId || null]
+    );
+    const course = { id: result.insertId, code, name, description, teacherId: teacherId || null };
+    await writeAuditLog(req, "INSERT", "courses", result.insertId, null, course);
+    res.status(201).json(course);
+  } catch (error) {
+    safeLogError("Failed to create course", error);
+    res.status(500).json({ message: "Failed to create course" });
+  }
+});
+
+app.get("/api/subjects", requireAuth, async (_req, res) => {
+  try {
+    const [rows] = await pool.query("SELECT subject_id AS id, subject_name AS name, teacher_id AS teacherId FROM subjects ORDER BY subject_name ASC");
+    res.json(rows);
+  } catch (error) {
+    safeLogError("Failed to fetch subjects", error);
+    res.status(500).json({ message: "Failed to fetch subjects" });
+  }
+});
+
+app.post("/api/subjects", requireAuth, requireRole("admin"), async (req, res) => {
+  const name = sanitizeText(req.body.name, 100);
+  const teacherId = normalizeIdentifier(req.body.teacherId);
+
+  if (!name || !teacherId) {
+    return res.status(400).json({ message: "Subject name and teacher are required" });
+  }
+
+  try {
+    const [result] = await pool.query("INSERT INTO subjects (subject_name, teacher_id) VALUES (?, ?)", [name, teacherId]);
+    const subject = { id: result.insertId, name, teacherId };
+    await writeAuditLog(req, "INSERT", "subjects", result.insertId, null, subject);
+    res.status(201).json(subject);
+  } catch (error) {
+    safeLogError("Failed to create subject", error);
+    res.status(500).json({ message: "Failed to create subject" });
+  }
+});
+
+app.get("/api/grade-scales", requireAuth, async (_req, res) => {
+  try {
+    const [rows] = await pool.query(
+      "SELECT id, label, min_score AS minScore, max_score AS maxScore, description FROM grade_scales ORDER BY min_score DESC"
+    );
+    res.json(rows);
+  } catch (error) {
+    safeLogError("Failed to fetch grade scales", error);
+    res.status(500).json({ message: "Failed to fetch grade scales" });
+  }
+});
+
+app.post("/api/grade-scales", requireAuth, requireRole("admin"), async (req, res) => {
+  const label = sanitizeText(req.body.label, 20);
+  const minScore = Number(req.body.minScore);
+  const maxScore = Number(req.body.maxScore);
+  const description = sanitizeText(req.body.description, 255);
+
+  if (!label || !Number.isFinite(minScore) || !Number.isFinite(maxScore)) {
+    return res.status(400).json({ message: "Grade label, min score, and max score are required" });
+  }
+
+  try {
+    const [result] = await pool.query(
+      "INSERT INTO grade_scales (label, min_score, max_score, description) VALUES (?, ?, ?, ?)",
+      [label, minScore, maxScore, description]
+    );
+    const scale = { id: result.insertId, label, minScore, maxScore, description };
+    await writeAuditLog(req, "INSERT", "grade_scales", result.insertId, null, scale);
+    res.status(201).json(scale);
+  } catch (error) {
+    safeLogError("Failed to create grade scale", error);
+    res.status(500).json({ message: "Failed to create grade scale" });
+  }
+});
+
+app.get("/api/audit-logs", requireAuth, requireRole("admin"), async (_req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT log_id AS id, admin_id AS adminId, action, table_name AS tableName, record_id AS recordId, old_value AS oldValue, new_value AS newValue, changed_at AS changedAt
+       FROM audit_log
+       ORDER BY changed_at DESC
+       LIMIT 100`
+    );
+    res.json(rows);
+  } catch (error) {
+    safeLogError("Failed to fetch audit logs", error);
+    res.status(500).json({ message: "Failed to fetch audit logs" });
+  }
+});
+
+app.get("/api/backup", requireAuth, requireRole("admin"), async (_req, res) => {
+  try {
+    const [users] = await pool.query(`SELECT id, email, ${getUserNameExpression()} AS name, role, password AS passwordHash FROM users ORDER BY id ASC`);
+    const [grades] = await pool.query(
+      `SELECT id, student_id AS studentId, subject, score, feedback, teacher_id AS teacherId, school_year AS schoolYear, semester, term
+       FROM grades ORDER BY id ASC`
+    );
+    const [attendance] = await pool.query("SELECT log_id AS id, student_id AS studentId, log_date AS date, status FROM attendance ORDER BY log_id ASC");
+    const [assignments] = await pool.query(
+      "SELECT id, teacher_id AS teacherId, student_id AS studentId, subject, course, section, school_year AS schoolYear, semester FROM teacher_assignments ORDER BY id ASC"
+    );
+    const [courses] = await pool.query("SELECT id, code, name, description, teacher_id AS teacherId FROM courses ORDER BY id ASC");
+    const [subjects] = await pool.query("SELECT subject_id AS id, subject_name AS name, teacher_id AS teacherId FROM subjects ORDER BY subject_id ASC");
+    const [gradeScales] = await pool.query("SELECT id, label, min_score AS minScore, max_score AS maxScore, description FROM grade_scales ORDER BY id ASC");
+
+    res.json({
+      exportedAt: new Date().toISOString(),
+      users,
+      grades,
+      attendance,
+      assignments,
+      courses,
+      subjects,
+      gradeScales,
+    });
+  } catch (error) {
+    safeLogError("Backup failed", error);
+    res.status(500).json({ message: "Backup failed" });
+  }
+});
+
+app.post("/api/restore", requireAuth, requireRole("admin"), async (req, res) => {
+  const snapshot = req.body;
+
+  if (!snapshot || typeof snapshot !== "object") {
+    return res.status(400).json({ message: "Backup snapshot is required" });
+  }
+
+  try {
+    const users = Array.isArray(snapshot.users) ? snapshot.users : [];
+    const subjects = Array.isArray(snapshot.subjects) ? snapshot.subjects : [];
+    const grades = Array.isArray(snapshot.grades) ? snapshot.grades : [];
+    const attendance = Array.isArray(snapshot.attendance) ? snapshot.attendance : [];
+    const assignments = Array.isArray(snapshot.assignments) ? snapshot.assignments : [];
+    const courses = Array.isArray(snapshot.courses) ? snapshot.courses : [];
+    const gradeScales = Array.isArray(snapshot.gradeScales) ? snapshot.gradeScales : [];
+
+    for (const user of users) {
+      const id = normalizeIdentifier(user.id);
+      const name = sanitizeText(user.name, 180);
+      const role = normalizeRole(user.role);
+      const email = normalizeEmail(user.email);
+
+      if (!id || !name || !isValidEmail(email) || !["admin", "teacher", "student"].includes(role)) {
+        continue;
+      }
+
+      const [firstName, ...remainingNames] = name.split(" ");
+      const lastName = remainingNames.join(" ") || firstName;
+
+      await pool.query(
+        `INSERT INTO users (id, email, firstname, lastname, name, role, password)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE email = VALUES(email), firstname = VALUES(firstname), lastname = VALUES(lastname), name = VALUES(name), role = VALUES(role)`,
+        [id, email, firstName, lastName, name, role, user.passwordHash || hashPassword("Temp@123")]
+      );
+    }
+
+    for (const course of courses) {
+      await pool.query(
+        `INSERT INTO courses (code, name, description, teacher_id)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description), teacher_id = VALUES(teacher_id)`,
+        [
+          sanitizeText(course.code, 40).toUpperCase(),
+          sanitizeText(course.name, 120),
+          sanitizeText(course.description, 255),
+          normalizeIdentifier(course.teacherId) || null,
+        ]
+      );
+    }
+
+    for (const subject of subjects) {
+      const name = sanitizeText(subject.name, 100);
+      const teacherId = normalizeIdentifier(subject.teacherId);
+
+      if (!name || !teacherId) {
+        continue;
+      }
+
+      const [existingSubjects] = await pool.query(
+        "SELECT subject_id FROM subjects WHERE subject_name = ? AND teacher_id = ? LIMIT 1",
+        [name, teacherId]
+      );
+
+      if (existingSubjects.length === 0) {
+        await pool.query("INSERT INTO subjects (subject_name, teacher_id) VALUES (?, ?)", [name, teacherId]);
+      }
+    }
+
+    for (const scale of gradeScales) {
+      await pool.query(
+        "INSERT INTO grade_scales (label, min_score, max_score, description) VALUES (?, ?, ?, ?)",
+        [sanitizeText(scale.label, 20), Number(scale.minScore), Number(scale.maxScore), sanitizeText(scale.description, 255)]
+      );
+    }
+
+    for (const assignment of assignments) {
+      await pool.query(
+        `INSERT INTO teacher_assignments (teacher_id, student_id, subject, course, section, school_year, semester)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE course = VALUES(course), section = VALUES(section)`,
+        [
+          normalizeIdentifier(assignment.teacherId),
+          normalizeIdentifier(assignment.studentId),
+          sanitizeText(assignment.subject, 100),
+          sanitizeText(assignment.course, 100),
+          sanitizeText(assignment.section, 50),
+          normalizeSchoolYear(assignment.schoolYear),
+          normalizeSemester(assignment.semester),
+        ]
+      );
+    }
+
+    for (const grade of grades) {
+      const studentId = normalizeIdentifier(grade.studentId);
+      const subject = sanitizeText(grade.subject, 100);
+      const score = Number(grade.score);
+
+      if (!studentId || !subject || !Number.isFinite(score)) {
+        continue;
+      }
+
+      await pool.query(
+        `INSERT INTO grades (id, student_id, subject, score, feedback, teacher_id, school_year, semester, term)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE subject = VALUES(subject), score = VALUES(score), feedback = VALUES(feedback), teacher_id = VALUES(teacher_id), school_year = VALUES(school_year), semester = VALUES(semester), term = VALUES(term)`,
+        [
+          Number.isInteger(Number(grade.id)) ? Number(grade.id) : null,
+          studentId,
+          subject,
+          score,
+          sanitizeText(grade.feedback, 500),
+          normalizeIdentifier(grade.teacherId) || null,
+          normalizeSchoolYear(grade.schoolYear),
+          normalizeSemester(grade.semester),
+          normalizeTerm(grade.term),
+        ]
+      );
+    }
+
+    for (const record of attendance) {
+      const studentId = normalizeIdentifier(record.studentId);
+      const status = sanitizeText(record.status, 20).toLowerCase();
+      const date = sanitizeText(record.date, 20);
+
+      if (!studentId || !date || !["present", "absent", "late"].includes(status)) {
+        continue;
+      }
+
+      await pool.query(
+        `INSERT INTO attendance (log_id, student_id, log_date, status)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE student_id = VALUES(student_id), log_date = VALUES(log_date), status = VALUES(status)`,
+        [Number.isInteger(Number(record.id)) ? Number(record.id) : null, studentId, date, status]
+      );
+    }
+
+    const restored = {
+      users: users.length,
+      courses: courses.length,
+      subjects: subjects.length,
+      gradeScales: gradeScales.length,
+      assignments: assignments.length,
+      grades: grades.length,
+      attendance: attendance.length,
+    };
+
+    await writeAuditLog(req, "RESTORE", "backup", "snapshot", null, restored);
+    res.json({ message: "Backup snapshot restored", restored });
+  } catch (error) {
+    safeLogError("Restore failed", error);
+    res.status(500).json({ message: "Restore failed" });
+  }
+});
+
+app.use((req, res) => {
+  res.status(404).json({ message: "Not found" });
+});
+
 app.use((error, _req, res, _next) => {
-  console.error("Unhandled server error:", error);
+  safeLogError("Unhandled server error", error);
   res.status(500).json({ message: "Internal server error" });
 });
 
 const server = app.listen(PORT, async () => {
-  console.log(`Server running on port ${PORT}`);
+  console.info(`Server running on port ${PORT}`);
 
   try {
     await testConnection();
-    console.log("MySQL Connected");
+    await ensureApplicationSchema();
+    console.info("MySQL Connected");
   } catch (error) {
-    console.error("MySQL connection failed:", error.message);
+    safeLogError("MySQL connection failed", error);
   }
 });
 

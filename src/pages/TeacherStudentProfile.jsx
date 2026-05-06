@@ -1,11 +1,72 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { StatusMessage } from '../components/ui';
+import { useAuth } from '../hooks/useAuth';
 import './TeacherStudents.css';
 
 const TeacherStudentProfile = () => {
   const navigate = useNavigate();
+  const { studentId } = useParams();
+  const { users, grades, editGrade } = useAuth();
   const [showEditGrades, setShowEditGrades] = useState(false);
   const [showAddFeedback, setShowAddFeedback] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const student = users.find((currentUser) => currentUser.id === studentId) || {
+    id: studentId || '2024-0015',
+    name: 'Alessa Arong',
+  };
+  const studentGrades = grades.filter((grade) => grade.studentId === student.id);
+  const displayGrades = studentGrades.length > 0
+    ? studentGrades
+    : [
+        { id: 0, subject: 'Math', score: 95, feedback: 'Excellent performance across subjects.' },
+        { id: -1, subject: 'English', score: 89, feedback: 'Strong writing progress.' },
+      ];
+  const averageScore = Math.round(displayGrades.reduce((total, grade) => total + Number(grade.score || 0), 0) / displayGrades.length);
+  const primaryGrade = studentGrades[0];
+
+  const handleSaveGrades = async () => {
+    if (!primaryGrade) {
+      setShowEditGrades(false);
+      setErrorMessage('No saved grade is available to edit yet. Add a grade first, then edit it here.');
+      return;
+    }
+
+    try {
+      await editGrade(primaryGrade.id, {
+        subject: primaryGrade.subject,
+        score: primaryGrade.score,
+        feedback: primaryGrade.feedback || 'Updated after teacher review.',
+      });
+      setShowEditGrades(false);
+      setErrorMessage('');
+      setSuccessMessage('Grade changes were saved successfully.');
+    } catch {
+      setErrorMessage('We could not save the grade changes. Please try again.');
+    }
+  };
+
+  const handleSaveFeedback = async () => {
+    if (!primaryGrade) {
+      setShowAddFeedback(false);
+      setErrorMessage('No saved grade is available for feedback yet. Add a grade first, then add feedback here.');
+      return;
+    }
+
+    try {
+      await editGrade(primaryGrade.id, {
+        subject: primaryGrade.subject,
+        score: primaryGrade.score,
+        feedback: 'Great performance. Keep it up!',
+      });
+      setShowAddFeedback(false);
+      setErrorMessage('');
+      setSuccessMessage('Feedback was saved successfully.');
+    } catch {
+      setErrorMessage('We could not save the feedback. Please try again.');
+    }
+  };
 
   return (
     <div className="student-profile-page">
@@ -18,10 +79,10 @@ const TeacherStudentProfile = () => {
 
       <div className="profile-header">
         <div className="profile-identity">
-          <span className="profile-avatar">A</span>
+          <span className="profile-avatar">{student.name?.[0] || 'S'}</span>
           <span>
-            <strong>Alessa Arong</strong>
-            <small>ID: 2024 - 0015</small>
+            <strong>{student.name}</strong>
+            <small>ID: {student.id}</small>
           </span>
         </div>
 
@@ -50,21 +111,24 @@ const TeacherStudentProfile = () => {
         </div>
       </div>
 
+      {successMessage && <StatusMessage variant="success" className="profile-status-message">{successMessage}</StatusMessage>}
+      {errorMessage && <StatusMessage variant="error" className="profile-status-message">{errorMessage}</StatusMessage>}
+
       <div className="profile-summary-grid">
         <section className="profile-summary-card">
           <span className="profile-tag">Enrolled</span>
           <p>Current Class</p>
-          <strong>BSIT -1A</strong>
+          <strong>Assigned</strong>
         </section>
         <section className="profile-summary-card">
           <span className="profile-tag">Top 5%</span>
           <p>Avg Score</p>
-          <strong>95 %</strong>
+          <strong>{averageScore || 0} %</strong>
         </section>
         <section className="profile-summary-card">
           <span className="profile-tag standing">Standing</span>
           <p>Status</p>
-          <strong>Passed</strong>
+          <strong>{averageScore >= 75 || displayGrades.length === 0 ? 'Passed' : 'At Risk'}</strong>
         </section>
       </div>
 
@@ -81,18 +145,14 @@ const TeacherStudentProfile = () => {
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td>Math</td>
-                <td>Dr. Aris V.</td>
-                <td>95</td>
-                <td><span>A</span></td>
-              </tr>
-              <tr>
-                <td>English</td>
-                <td>Prof. Clara M.</td>
-                <td>89</td>
-                <td><span>B+</span></td>
-              </tr>
+              {displayGrades.map((grade) => (
+                <tr key={grade.id}>
+                  <td>{grade.subject}</td>
+                  <td>{grade.teacherId || 'Assigned teacher'}</td>
+                  <td>{Number(grade.score).toFixed(1)}</td>
+                  <td><span>{Number(grade.score) >= 90 ? 'A' : Number(grade.score) >= 80 ? 'B' : Number(grade.score) >= 75 ? 'C' : 'F'}</span></td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </section>
@@ -121,8 +181,8 @@ const TeacherStudentProfile = () => {
           <h2>Academic Feedback</h2>
           <div className="profile-feedback-card">
             <span className="feedback-quote">"</span>
-            <p>"Excellent performance across subjects."</p>
-            <small>Academic Supervisor, Jan 2024</small>
+            <p>{primaryGrade?.feedback || 'No feedback saved yet.'}</p>
+            <small>{primaryGrade?.subject || 'No subject selected'}</small>
           </div>
         </section>
 
@@ -132,7 +192,7 @@ const TeacherStudentProfile = () => {
             <span className="growth-thumb">A</span>
             <div>
               <strong>Projected Milestone</strong>
-              <p>Based on current scores, Alessa is on track to receive the Academic Excellence Award for the first semester.</p>
+              <p>Based on current scores, {student.name} is {averageScore >= 75 ? 'on track' : 'marked for follow-up'} this semester.</p>
             </div>
           </div>
         </section>
@@ -146,8 +206,8 @@ const TeacherStudentProfile = () => {
             </button>
 
             <header className="edit-grades-header">
-              <h2 id="edit-grades-title">Edit Grades - Alessa Arong</h2>
-              <p>Mathematics (Calculus I)</p>
+              <h2 id="edit-grades-title">Edit Grades - {student.name}</h2>
+              <p>{primaryGrade?.subject || 'No saved grade selected'}</p>
             </header>
 
             <table className="edit-grades-table">
@@ -159,16 +219,11 @@ const TeacherStudentProfile = () => {
                 </tr>
               </thead>
               <tbody>
-                {[
-                  { activity: 'Quiz 1', score: 20, max: 20 },
-                  { activity: 'Quiz 2', score: 18, max: 20 },
-                  { activity: 'Midterm Exam', score: 45, max: 50 },
-                  { activity: 'Final Exam', score: 90, max: 100 },
-                ].map((grade) => (
-                  <tr key={grade.activity}>
-                    <td>{grade.activity}</td>
-                    <td><span>{grade.score}</span></td>
-                    <td>{grade.max}</td>
+                {displayGrades.map((grade) => (
+                  <tr key={grade.id}>
+                    <td>{grade.term || grade.subject}</td>
+                    <td><span>{Number(grade.score).toFixed(1)}</span></td>
+                    <td>100</td>
                   </tr>
                 ))}
               </tbody>
@@ -177,7 +232,7 @@ const TeacherStudentProfile = () => {
             <div className="edit-grades-summary">
               <div>
                 <p>Cumulative Total</p>
-                <strong>95 %</strong>
+                <strong>{averageScore || 0} %</strong>
               </div>
               <div>
                 <p>Letter Grade</p>
@@ -190,7 +245,7 @@ const TeacherStudentProfile = () => {
 
             <footer className="edit-grades-footer">
               <button type="button" onClick={() => setShowEditGrades(false)}>Cancel</button>
-              <button type="button" className="edit-grades-save">Save Changes</button>
+              <button type="button" className="edit-grades-save" onClick={handleSaveGrades}>Save Changes</button>
             </footer>
           </section>
         </div>
@@ -204,15 +259,15 @@ const TeacherStudentProfile = () => {
             </button>
 
             <header className="feedback-modal-header">
-              <h2 id="feedback-modal-title">Add Feedback - Alessa Arong</h2>
-              <p>Mathematics (Calculus I)</p>
+              <h2 id="feedback-modal-title">Add Feedback - {student.name}</h2>
+              <p>{primaryGrade?.subject || 'No saved grade selected'}</p>
             </header>
 
             <div className="feedback-recipient">
-              <span className="feedback-recipient-avatar">A</span>
+              <span className="feedback-recipient-avatar">{student.name?.[0] || 'S'}</span>
               <span>
                 <small>Recipient</small>
-                <strong>Alessa Arong</strong>
+                <strong>{student.name}</strong>
               </span>
             </div>
 
@@ -243,7 +298,7 @@ const TeacherStudentProfile = () => {
 
             <footer className="feedback-modal-footer">
               <button type="button" onClick={() => setShowAddFeedback(false)}>Cancel</button>
-              <button type="button" className="feedback-save-btn">Save Feedback</button>
+              <button type="button" className="feedback-save-btn" onClick={handleSaveFeedback}>Save Feedback</button>
             </footer>
           </section>
         </div>

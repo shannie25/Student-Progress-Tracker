@@ -1,48 +1,61 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
+import { useAuth } from '../hooks/useAuth';
 import './Attendance.css';
 
+const monthName = (dateValue) => new Date(dateValue).toLocaleString('en-US', { month: 'long' });
+
 const Attendance = () => {
-  const trendMonths = [
-    { month: 'Sep', present: 76, late: 8 },
-    { month: 'Oct', present: 94, late: 3 },
-    { month: 'Nov', present: 68, late: 10 },
-    { month: 'Dec', present: 100, late: 0 },
-    { month: 'Jan', present: 97, late: 9 },
-  ];
+  const { attendance, user, users } = useAuth();
+  const [selectedSemester, setSelectedSemester] = useState('All');
+  const [selectedYear, setSelectedYear] = useState('All');
+  const records = useMemo(() => attendance.filter((record) => {
+    const year = new Date(record.date).getFullYear().toString();
+    return (selectedYear === 'All' || year === selectedYear) && selectedSemester;
+  }), [attendance, selectedSemester, selectedYear]);
+  const years = [...new Set(attendance.map((record) => new Date(record.date).getFullYear().toString()))];
+  const totalDays = records.length;
+  const presentDays = records.filter((record) => record.status === 'present').length;
+  const absentDays = records.filter((record) => record.status === 'absent').length;
+  const lateDays = records.filter((record) => record.status === 'late').length;
+  const attendanceRate = totalDays ? Math.round((presentDays / totalDays) * 100) : 0;
+  const monthlySummary = Object.values(records.reduce((groups, record) => {
+    const month = monthName(record.date);
+    const currentGroup = groups[month] || { month, present: 0, absent: 0, late: 0 };
 
-  const calendarDays = [
-    { day: 30, muted: true },
-    { day: 31, muted: true },
-    { day: 1, type: 'present' },
-    { day: 2, type: 'present' },
-    { day: 3, type: 'present' },
-    { day: 4 },
-    { day: 5 },
-    { day: 6, type: 'present' },
-    { day: 7, type: 'present' },
-    { day: 8, type: 'present' },
-    { day: 9, type: 'present' },
-    { day: 10, type: 'present' },
-    { day: 11 },
-    { day: 12 },
-    { day: 13, type: 'absent' },
-    { day: 14, type: 'late' },
-    { day: 15, type: 'present' },
-    { day: 16, type: 'present' },
-    { day: 17, type: 'present' },
-  ];
+    currentGroup[record.status] += 1;
+    groups[month] = currentGroup;
+    return groups;
+  }, {}));
+  const trendMonths = monthlySummary.map((item) => {
+    const total = item.present + item.absent + item.late || 1;
+    return {
+      month: item.month.slice(0, 3),
+      present: Math.round((item.present / total) * 100),
+      late: Math.round((item.late / total) * 100),
+    };
+  });
+  const recentRecords = records.slice(0, 6);
+  const studentName = (studentId) => users.find((currentUser) => currentUser.id === studentId)?.name || user.name;
 
-  const monthlySummary = [
-    { month: 'January', present: 20, absent: 1, late: 0, status: 'Good' },
-    { month: 'December', present: 18, absent: 2, late: 1, status: 'Good' },
-    { month: 'November', present: 22, absent: 0, late: 0, status: 'Perfect' },
-  ];
+  const handlePrint = () => {
+    window.print();
+  };
 
-  const dailyRecords = [
-    { date: 'JAN 10', type: 'Present', detail: 'Status: On time', tone: 'present' },
-    { date: 'JAN 13', type: 'Absent', detail: 'Status: Medical leave', tone: 'absent' },
-    { date: 'JAN 08', type: 'Late', detail: 'Arrived at 09:15', tone: 'late' },
-  ];
+  const handleDownload = () => {
+    const header = ['Student ID', 'Student Name', 'Date', 'Status'];
+    const body = records.map((record) => [record.studentId, studentName(record.studentId), record.date, record.status]);
+    const csvContent = [header, ...body]
+      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = `attendance-report-${user.id}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="attendance-page">
@@ -52,16 +65,19 @@ const Attendance = () => {
         <div className="attendance-filters">
           <label>
             <span>Semester</span>
-            <select defaultValue="Spring">
-              <option value="Spring">Spring</option>
-              <option value="Fall">Fall</option>
+            <select value={selectedSemester} onChange={(event) => setSelectedSemester(event.target.value)}>
+              <option value="All">All</option>
+              <option value="1st Semester">1st Semester</option>
+              <option value="2nd Semester">2nd Semester</option>
             </select>
           </label>
           <label>
             <span>Year</span>
-            <select defaultValue="2024-2024">
-              <option value="2024-2024">2024-2024</option>
-              <option value="2023-2024">2023-2024</option>
+            <select value={selectedYear} onChange={(event) => setSelectedYear(event.target.value)}>
+              <option value="All">All</option>
+              {years.map((year) => (
+                <option key={year} value={year}>{year}</option>
+              ))}
             </select>
           </label>
         </div>
@@ -70,19 +86,19 @@ const Attendance = () => {
       <div className="attendance-stats">
         <section className="attendance-stat-card">
           <h2>Total Days</h2>
-          <p>100</p>
+          <p>{totalDays}</p>
         </section>
         <section className="attendance-stat-card">
           <h2>Present</h2>
-          <p>92</p>
+          <p>{presentDays}</p>
         </section>
         <section className="attendance-stat-card">
           <h2>Absent</h2>
-          <p className="danger">8</p>
+          <p className="danger">{absentDays}</p>
         </section>
         <section className="attendance-stat-card rate-card">
           <h2>Attendance Rate</h2>
-          <p>92%</p>
+          <p>{attendanceRate}%</p>
         </section>
       </div>
 
@@ -98,7 +114,7 @@ const Attendance = () => {
             </div>
 
             <div className="trend-chart" aria-label="Attendance trends by month">
-              {trendMonths.map((item) => (
+              {(trendMonths.length ? trendMonths : [{ month: 'N/A', present: 0, late: 0 }]).map((item) => (
                 <div className="trend-column" key={item.month}>
                   <div className="bar-track">
                     <span className="late-bar" style={{ height: `${item.late}%` }} />
@@ -130,10 +146,15 @@ const Attendance = () => {
                     <td>{item.absent}</td>
                     <td>{item.late}</td>
                     <td>
-                      <span className={item.status === 'Perfect' ? 'perfect-status' : ''}>{item.status}</span>
+                      <span className={item.absent === 0 ? 'perfect-status' : ''}>{item.absent === 0 ? 'Perfect' : 'Recorded'}</span>
                     </td>
                   </tr>
                 ))}
+                {monthlySummary.length === 0 && (
+                  <tr>
+                    <td colSpan="5">No attendance records yet.</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </section>
@@ -142,68 +163,55 @@ const Attendance = () => {
         <aside className="attendance-side">
           <section className="calendar-card">
             <div className="calendar-header">
-              <h2>January 2025</h2>
-              <div>
-                <button type="button" aria-label="Previous month">
-                  <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></svg>
-                </button>
-                <button type="button" aria-label="Next month">
-                  <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
-                </button>
-              </div>
-            </div>
-
-            <div className="calendar-weekdays">
-              {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, index) => (
-                <span key={`${day}-${index}`}>{day}</span>
-              ))}
-            </div>
-
-            <div className="calendar-grid">
-              {calendarDays.map((day, index) => (
-                <span key={`${day.day}-${index}`} className={`${day.type || ''} ${day.muted ? 'muted' : ''}`}>
-                  {day.day}
-                </span>
-              ))}
+              <h2>Recent Records</h2>
             </div>
 
             <div className="calendar-legend">
-              <span><b className="present-dot" />Present (P)</span>
-              <span><b className="absent-dot" />Absent (A)</span>
-              <span><b className="late-dot" />Late (L)</span>
+              <span><b className="present-dot" />Present: {presentDays}</span>
+              <span><b className="absent-dot" />Absent: {absentDays}</span>
+              <span><b className="late-dot" />Late: {lateDays}</span>
             </div>
           </section>
 
           <section className="daily-records">
             <h2>Daily Records</h2>
             <div className="daily-record-list">
-              {dailyRecords.map((record) => (
-                <article key={`${record.date}-${record.type}`}>
-                  <time>{record.date}</time>
+              {recentRecords.map((record) => (
+                <article key={record.id}>
+                  <time>{new Date(record.date).toLocaleDateString('en-US', { month: 'short', day: '2-digit' }).toUpperCase()}</time>
                   <div>
-                    <strong>{record.type}</strong>
-                    <span>{record.detail}</span>
+                    <strong>{record.status.charAt(0).toUpperCase() + record.status.slice(1)}</strong>
+                    <span>{studentName(record.studentId)}</span>
                   </div>
-                  <b className={record.tone}>
-                    {record.tone === 'present' ? '✓' : record.tone === 'absent' ? '!' : 'L'}
+                  <b className={record.status}>
+                    {record.status === 'present' ? 'P' : record.status === 'absent' ? 'A' : 'L'}
                   </b>
                 </article>
               ))}
+              {recentRecords.length === 0 && (
+                <article>
+                  <time>N/A</time>
+                  <div>
+                    <strong>No records</strong>
+                    <span>Attendance will appear here once recorded.</span>
+                  </div>
+                  <b>N</b>
+                </article>
+              )}
             </div>
-            <button className="detailed-log-btn" type="button">View Detailed Log</button>
           </section>
         </aside>
       </div>
 
       <div className="attendance-actions">
-        <button className="attendance-print-btn" type="button">
+        <button className="attendance-print-btn" type="button" onClick={handlePrint}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
             <path d="M6 14h12v8H6z" />
           </svg>
           Print
         </button>
-        <button className="attendance-download-btn" type="button">
+        <button className="attendance-download-btn" type="button" onClick={handleDownload}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />
           </svg>

@@ -279,6 +279,10 @@
   margin-bottom: 24px;
 }
 
+.profile-status-message {
+  margin-bottom: 20px;
+}
+
 .profile-identity,
 .profile-actions {
   display: flex;

@@ -443,6 +443,13 @@
   text-decoration: none;
 }
 
+button.view-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
 .feedback-cell {
   color: #7c828a;
   font-size: 10px;

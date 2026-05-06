@@ -16,6 +16,10 @@
   margin-bottom: 20px;
 }
 
+.student-report-status {
+  margin-bottom: 18px;
+}
+
 .grades-toolbar h1 {
   color: #050505;
   font-size: 25px;
@@ -307,6 +311,11 @@
   display: flex;
   flex-direction: column;
   gap: 9px;
+}
+
+.grades-report-actions {
+  max-width: 280px;
+  margin-top: 22px;
 }
 
 .grades-actions button {

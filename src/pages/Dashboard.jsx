@@ -1,22 +1,16 @@
 import React from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 import { formatName } from '../utils/formatName';
 import './Dashboard.css';
 
 const Dashboard = () => {
-  const { user, grades, users } = useAuth();
+  const { user, grades, users, attendance, classAnalytics } = useAuth();
 
   const studentGrades = user.role === 'student'
     ? grades.filter((grade) => grade.studentId === user.id)
     : grades;
 
-  const mockGrades = [
-    { id: 1, subject: 'Advanced Typography', professor: 'Prof. Elena Vance', score: 92, feedback: 'Excellent use of modular grid systems and hierarchy.' },
-    { id: 2, subject: 'Digital Interface Design', professor: 'Dr. Julian Thorne', score: 96, feedback: 'Strong conceptual depth in UI and interaction choices.' },
-    { id: 3, subject: 'Human - Computer Interaction', professor: 'Dr. Julian Thorne', score: 88, feedback: 'Research phase and usability inspection were clear.' },
-  ];
-
-  const displayGrades = studentGrades.length > 0 ? studentGrades : mockGrades;
+  const displayGrades = studentGrades;
 
   const calculateGPA = () => {
     if (displayGrades.length === 0) return '0.0';
@@ -36,49 +30,45 @@ const Dashboard = () => {
 
   const firstName = formatName(user?.name)?.split(' ')[0] || 'Crist';
 
-  const mockFeedback = [
-    {
-      id: 1,
-      teacher: 'Prof. Vance',
-      message: "Crist's attention to whitespace and layout hierarchy in the latest project was exemplary. Truly thinking like a professional.",
-    },
-    {
-      id: 2,
-      teacher: 'Dr. Thorne',
-      message: 'Consistent improvement in system-level thinking. The user flows are becoming much more intuitive.',
-    },
-  ];
-
-  const gradeHistory = [
-    { semester: 'Semester 1, 2024', date: 'Completed on July 15, 2024', gpa: '3.65' },
-    { semester: 'Semester 2, 2023', date: 'Completed on December 20, 2023', gpa: '3.72' },
-  ];
+  const feedbackRows = studentGrades.filter((grade) => grade.feedback).slice(0, 3);
+  const gradeHistory = Object.values(studentGrades.reduce((groups, grade) => {
+    const key = `${grade.schoolYear || '2025-2026'}-${grade.semester || '1st Semester'}`;
+    const group = groups[key] || { semester: `${grade.semester || '1st Semester'}, ${grade.schoolYear || '2025-2026'}`, grades: [] };
+    group.grades.push(grade);
+    groups[key] = group;
+    return groups;
+  }, {})).map((group) => {
+    const average = group.grades.reduce((total, grade) => total + Number(grade.score || 0), 0) / group.grades.length;
+    return { ...group, gpa: (average / 25).toFixed(2) };
+  });
+  const studentAttendance = attendance.filter((record) => record.studentId === user.id);
+  const presentAttendance = studentAttendance.filter((record) => record.status === 'present').length;
+  const absentAttendance = studentAttendance.filter((record) => record.status === 'absent').length;
 
   if (user.role === 'teacher') {
     const teacherName = formatName(user?.name) || 'Prof. Reyes';
     const teacherStudents = users.filter((currentUser) => currentUser.role === 'student');
-    const totalStudents = teacherStudents.length || 40;
-    const teacherAverage = grades.length > 0
-      ? Math.round(grades.reduce((total, grade) => total + (grade.score || 0), 0) / grades.length)
-      : 88;
-
-    const topStudents = [
-      { name: 'Annie', note: 'Exception Homework Completion', score: '95%', status: 'Mastery' },
-      { name: 'Alessa', note: 'Strong Analytic Skills', score: '94%', status: 'Mastery' },
-    ];
-
-    const needsImprovement = [
-      { name: 'Credo', note: 'Low Participation Rate', score: '72%', status: 'At Risk' },
-      { name: 'Chad', note: 'Missing Last 2 Assignments', score: '72%', status: 'At Risk' },
-    ];
-
-    const gradeDistribution = [
-      { letter: 'A', value: 68, color: '#6556f4' },
-      { letter: 'B', value: 100, color: '#6556f4' },
-      { letter: 'C', value: 78, color: '#6556f4' },
-      { letter: 'D', value: 34, color: '#858585' },
-      { letter: 'F', value: 22, color: '#ff1010' },
-    ];
+    const totalStudents = teacherStudents.length;
+    const teacherAverage = Math.round(classAnalytics?.classAverage || 0);
+    const topStudents = (classAnalytics?.topPerformers || []).map((item) => ({
+      name: users.find((currentUser) => currentUser.id === item.studentId)?.name || item.studentId,
+      note: 'Highest current averages',
+      score: `${item.average}%`,
+      status: 'Mastery',
+    }));
+    const needsImprovement = (classAnalytics?.bottomPerformers || []).map((item) => ({
+      name: users.find((currentUser) => currentUser.id === item.studentId)?.name || item.studentId,
+      note: 'Lowest current averages',
+      score: `${item.average}%`,
+      status: item.average < 75 ? 'At Risk' : 'Monitor',
+    }));
+    const distribution = classAnalytics?.distribution || { A: 0, B: 0, C: 0, D: 0, F: 0 };
+    const maxDistribution = Math.max(...Object.values(distribution), 1);
+    const gradeDistribution = Object.entries(distribution).map(([letter, count]) => ({
+      letter,
+      value: Math.max((count / maxDistribution) * 100, count ? 16 : 4),
+      color: letter === 'F' ? '#ff1010' : letter === 'D' ? '#858585' : '#6556f4',
+    }));
 
     return (
       <div className="dashboard-container teacher-dashboard">
@@ -269,7 +259,7 @@ const Dashboard = () => {
                         <span className="score-badge">{getLetterGrade(grade.score)} ({grade.score}%)</span>
                       </td>
                       <td className="feedback-cell" data-label="Feedback">{grade.feedback || 'No feedback'}</td>
-                      <td data-label="Action"><a href="#" className="view-link">View</a></td>
+                      <td data-label="Action"><button type="button" className="view-link">View</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -301,15 +291,15 @@ const Dashboard = () => {
             <div className="metrics-grid">
               <div className="metric">
                 <p className="metric-label">Total</p>
-                <p className="metric-value">120</p>
+                <p className="metric-value">{studentAttendance.length}</p>
               </div>
               <div className="metric">
                 <p className="metric-label present">Present</p>
-                <p className="metric-value">41</p>
+                <p className="metric-value">{presentAttendance}</p>
               </div>
               <div className="metric">
                 <p className="metric-label absent">Absent</p>
-                <p className="metric-value">10</p>
+                <p className="metric-value">{absentAttendance}</p>
               </div>
             </div>
           </section>
@@ -317,22 +307,23 @@ const Dashboard = () => {
           <section className="feedback-section">
             <h2>Teacher Feedback</h2>
             <div className="feedback-list">
-              {mockFeedback.map((feedback) => (
+              {feedbackRows.map((feedback) => (
                 <div key={feedback.id} className="feedback-item">
-                  <p className="feedback-text">"{feedback.message}"</p>
+                  <p className="feedback-text">"{feedback.feedback}"</p>
                   <p className="feedback-teacher">
-                    <span aria-hidden="true">A</span>
-                    - {feedback.teacher}
+                    <span aria-hidden="true">{feedback.subject?.[0] || 'S'}</span>
+                    - {feedback.subject}
                   </p>
                 </div>
               ))}
+              {feedbackRows.length === 0 && <p className="empty-state">No feedback available yet</p>}
             </div>
           </section>
 
           <section className="card records-card">
             <h2>Academic Records</h2>
             <div className="records-actions">
-              <button className="record-btn">
+              <button type="button" className="record-btn">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                   <path d="M14 2v6h6M9 15h6M12 12v6" />
@@ -342,7 +333,7 @@ const Dashboard = () => {
                   <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />
                 </svg>
               </button>
-              <button className="record-btn">
+              <button type="button" className="record-btn">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
                   <path d="M6 14h12v8H6z" />

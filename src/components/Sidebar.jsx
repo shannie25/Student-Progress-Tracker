@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 import { formatName } from '../utils/formatName';
 
 const Sidebar = () => {
@@ -8,6 +8,12 @@ const Sidebar = () => {
   const navigate = useNavigate();
 
   const handleLogout = () => {
+    const confirmed = window.confirm('Log out of ClassIQ? You will return to the login screen.');
+
+    if (!confirmed) {
+      return;
+    }
+
     logout();
     navigate('/');
   };
@@ -60,7 +66,7 @@ const Sidebar = () => {
           ))}
       </nav>
 
-      <button className="sidebar-logout" onClick={handleLogout}>
+      <button type="button" className="sidebar-logout" onClick={handleLogout} aria-label="Log out of ClassIQ">
         Logout
       </button>
     </aside>
