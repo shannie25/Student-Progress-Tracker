@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
+import { formatName } from '../utils/formatName';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -33,7 +34,7 @@ const Dashboard = () => {
     return 'C';
   };
 
-  const firstName = user?.name?.split(' ')[0] || 'Crist';
+  const firstName = formatName(user?.name)?.split(' ')[0] || 'Crist';
 
   const mockFeedback = [
     {
@@ -52,6 +53,145 @@ const Dashboard = () => {
     { semester: 'Semester 1, 2024', date: 'Completed on July 15, 2024', gpa: '3.65' },
     { semester: 'Semester 2, 2023', date: 'Completed on December 20, 2023', gpa: '3.72' },
   ];
+
+  if (user.role === 'teacher') {
+    const teacherName = formatName(user?.name) || 'Prof. Reyes';
+    const teacherStudents = users.filter((currentUser) => currentUser.role === 'student');
+    const totalStudents = teacherStudents.length || 40;
+    const teacherAverage = grades.length > 0
+      ? Math.round(grades.reduce((total, grade) => total + (grade.score || 0), 0) / grades.length)
+      : 88;
+
+    const topStudents = [
+      { name: 'Annie', note: 'Exception Homework Completion', score: '95%', status: 'Mastery' },
+      { name: 'Alessa', note: 'Strong Analytic Skills', score: '94%', status: 'Mastery' },
+    ];
+
+    const needsImprovement = [
+      { name: 'Credo', note: 'Low Participation Rate', score: '72%', status: 'At Risk' },
+      { name: 'Chad', note: 'Missing Last 2 Assignments', score: '72%', status: 'At Risk' },
+    ];
+
+    const gradeDistribution = [
+      { letter: 'A', value: 68, color: '#6556f4' },
+      { letter: 'B', value: 100, color: '#6556f4' },
+      { letter: 'C', value: 78, color: '#6556f4' },
+      { letter: 'D', value: 34, color: '#858585' },
+      { letter: 'F', value: 22, color: '#ff1010' },
+    ];
+
+    return (
+      <div className="dashboard-container teacher-dashboard">
+        <div className="dashboard-header">
+          <h1>Welcome, {teacherName}</h1>
+        </div>
+
+        <div className="teacher-stats-grid">
+          <div className="teacher-stat-card">
+            <span className="teacher-stat-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+            </span>
+            <span className="teacher-stat-trend">Active</span>
+            <p className="teacher-stat-value">{totalStudents}</p>
+            <p className="teacher-stat-label">Total Students Enroll</p>
+          </div>
+
+          <div className="teacher-stat-card">
+            <span className="teacher-stat-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+              </svg>
+            </span>
+            <span className="teacher-stat-trend">+2.4%</span>
+            <p className="teacher-stat-value">{teacherAverage}%</p>
+            <p className="teacher-stat-label">Class Average Grade</p>
+          </div>
+
+          <div className="teacher-stat-card teacher-stat-card-dark">
+            <span className="teacher-stat-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M9 11l3 3L22 4" />
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+              </svg>
+            </span>
+            <span className="teacher-stat-trend">Goal Met</span>
+            <p className="teacher-stat-value">92%</p>
+            <p className="teacher-stat-label">Overall Passing Rate</p>
+          </div>
+        </div>
+
+        <div className="teacher-insights-grid">
+          <section className="teacher-card teacher-grade-card">
+            <div className="teacher-card-header">
+              <h2>Grade Distribution</h2>
+              <span>Last Assessment</span>
+            </div>
+            <div className="grade-chart" aria-label="Grade distribution chart">
+              {gradeDistribution.map((grade) => (
+                <div key={grade.letter} className="grade-bar-item">
+                  <span
+                    className="grade-bar"
+                    style={{ height: `${grade.value}%`, backgroundColor: grade.color }}
+                  />
+                  <span className="grade-letter">{grade.letter}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="teacher-card teacher-insight-card">
+            <h2>Course Insights</h2>
+            <p>Students are struggling with "Quadratic Equations". Consider a review session this Friday.</p>
+            <button type="button">Review Session Plans {'>'}</button>
+          </section>
+        </div>
+
+        <div className="teacher-student-grid">
+          <section className="teacher-list-section">
+            <h2>Top Students</h2>
+            <div className="teacher-student-list">
+              {topStudents.map((student) => (
+                <div key={student.name} className="teacher-student-item">
+                  <span className="teacher-student-avatar">{student.name[0]}</span>
+                  <span className="teacher-student-info">
+                    <strong>{student.name}</strong>
+                    <small>{student.note}</small>
+                  </span>
+                  <span className="teacher-student-score">
+                    <strong>{student.score}</strong>
+                    <small>{student.status}</small>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="teacher-list-section">
+            <h2>Needs Improvement</h2>
+            <div className="teacher-student-list">
+              {needsImprovement.map((student) => (
+                <div key={student.name} className="teacher-student-item">
+                  <span className="teacher-student-avatar">{student.name[0]}</span>
+                  <span className="teacher-student-info">
+                    <strong>{student.name}</strong>
+                    <small>{student.note}</small>
+                  </span>
+                  <span className="teacher-student-score teacher-student-score-risk">
+                    <strong>{student.score}</strong>
+                    <small>{student.status}</small>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
 
   if (user.role !== 'student') {
     return (

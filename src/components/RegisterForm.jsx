@@ -8,7 +8,7 @@ const RegisterForm = ({ onBackToLogin }) => {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const registrationRole = params.get('role') === 'teacher' ? 'teacher' : 'student';
-  const idLabel = registrationRole === 'teacher' ? 'Teacher ID' : 'Student ID';
+  const idLabel = registrationRole === 'teacher' ? "Teacher's ID" : 'Student ID';
   const [formData, setFormData] = useState({
     firstName: '',
     middleName: '',
