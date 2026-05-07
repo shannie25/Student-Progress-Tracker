@@ -358,6 +358,8 @@ const ensureApplicationSchema = async () => {
     );
   }
 
+  await ensureDefaultAdminAccount();
+
   if (await tableExists("grades")) {
     await ensureColumn("grades", "subject_id", "INT NULL");
     await ensureColumn("grades", "subject", "VARCHAR(100) NULL");
@@ -453,6 +455,61 @@ const normalizeSemester = (value) => {
 };
 
 const normalizeTerm = (value) => sanitizeText(value || "Prelim", 40);
+
+const ensureDefaultAdminAccount = async () => {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  const adminUser = {
+    id: "1001",
+    email: "admin@school.com",
+    firstName: "System",
+    lastName: "Admin",
+    name: "System Admin",
+    role: "admin",
+  };
+  const [existingRows] = await pool.query(
+    "SELECT id, email, role FROM users WHERE id = ? OR email = ? LIMIT 1",
+    [adminUser.id, adminUser.email]
+  );
+  const existingUser = existingRows[0];
+
+  if (existingUser && existingUser.id !== adminUser.id) {
+    console.warn("Default admin email is already used by another account.");
+    return;
+  }
+
+  if (existingUser && existingUser.email !== adminUser.email) {
+    console.warn("Default admin ID is already used by another account.");
+    return;
+  }
+
+  const adminValues = [
+    adminUser.id,
+    adminUser.email,
+    adminUser.firstName,
+    adminUser.lastName,
+    adminUser.name,
+    adminUser.role,
+    hashPassword("Admin@123"),
+  ];
+
+  if (existingUser) {
+    await pool.query(
+      "UPDATE users SET email = ?, firstname = ?, lastname = ?, name = ?, role = ?, password = ? WHERE id = ?",
+      [adminUser.email, adminUser.firstName, adminUser.lastName, adminUser.name, adminUser.role, adminValues[6], adminUser.id]
+    );
+  } else {
+    await pool.query(
+      `INSERT INTO users (id, email, firstname, lastname, name, role, password)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      adminValues
+    );
+  }
+
+  console.info("Default admin account is ready: admin@school.com");
+};
 
 const writeAuditLog = async (req, action, tableName, recordId, oldValue = null, newValue = null) => {
   try {
@@ -1304,6 +1361,69 @@ app.post("/api/courses", requireAuth, requireRole("admin"), async (req, res) => 
   } catch (error) {
     safeLogError("Failed to create course", error);
     res.status(500).json({ message: "Failed to create course" });
+  }
+});
+
+app.put("/api/courses/:id", requireAuth, requireRole("admin"), async (req, res) => {
+  const courseId = Number(req.params.id);
+  const code = sanitizeText(req.body.code, 40).toUpperCase();
+  const name = sanitizeText(req.body.name, 120);
+  const description = sanitizeText(req.body.description, 255);
+  const teacherId = normalizeIdentifier(req.body.teacherId);
+
+  if (!Number.isInteger(courseId) || courseId <= 0) {
+    return res.status(400).json({ message: "Invalid course" });
+  }
+
+  if (!code || !name) {
+    return res.status(400).json({ message: "Course code and name are required" });
+  }
+
+  try {
+    const [existingRows] = await pool.query("SELECT id, code, name, description, teacher_id AS teacherId FROM courses WHERE id = ? LIMIT 1", [courseId]);
+
+    if (existingRows.length === 0) {
+      return res.status(404).json({ message: "Course not found" });
+    }
+
+    await pool.query(
+      "UPDATE courses SET code = ?, name = ?, description = ?, teacher_id = ? WHERE id = ?",
+      [code, name, description, teacherId || null, courseId]
+    );
+
+    const course = { id: courseId, code, name, description, teacherId: teacherId || null };
+    await writeAuditLog(req, "UPDATE", "courses", courseId, existingRows[0], course);
+    res.json(course);
+  } catch (error) {
+    if (error?.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "A course with that code already exists" });
+    }
+
+    safeLogError("Failed to update course", error);
+    res.status(500).json({ message: "Failed to update course" });
+  }
+});
+
+app.delete("/api/courses/:id", requireAuth, requireRole("admin"), async (req, res) => {
+  const courseId = Number(req.params.id);
+
+  if (!Number.isInteger(courseId) || courseId <= 0) {
+    return res.status(400).json({ message: "Invalid course" });
+  }
+
+  try {
+    const [existingRows] = await pool.query("SELECT id, code, name, description, teacher_id AS teacherId FROM courses WHERE id = ? LIMIT 1", [courseId]);
+
+    if (existingRows.length === 0) {
+      return res.status(404).json({ message: "Course not found" });
+    }
+
+    await pool.query("DELETE FROM courses WHERE id = ?", [courseId]);
+    await writeAuditLog(req, "DELETE", "courses", courseId, existingRows[0], null);
+    res.json({ ok: true });
+  } catch (error) {
+    safeLogError("Failed to delete course", error);
+    res.status(500).json({ message: "Failed to delete course" });
   }
 });
 

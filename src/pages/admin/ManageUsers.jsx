@@ -1,12 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { StatusMessage } from '../../components/ui';
+import { formatName } from '../../utils/formatName';
 import {
   createCourse,
   createGradeScale,
   createSubject,
   createTeacherAssignment,
   createUser,
+  deleteCourse,
   deleteTeacherAssignment,
   deleteUser,
   getAuditLogs,
@@ -17,20 +20,487 @@ import {
   getTeacherAssignments,
   resetUserPassword,
   restoreBackup,
+  updateCourse,
   updateUser,
 } from '../../services/adminService';
+import './ManageUsers.css';
 
 const emptyUserForm = { id: '', name: '', email: '', role: 'student', password: '' };
 const emptyAssignmentForm = { teacherId: '', studentId: '', subject: '', course: '', section: '', schoolYear: '2025-2026', semester: '1st Semester' };
 const emptyCourseForm = { code: '', name: '', description: '', teacherId: '' };
 const emptySubjectForm = { name: '', teacherId: '' };
 const emptyScaleForm = { label: '', minScore: 90, maxScore: 100, description: '' };
+const usersPerPage = 4;
+const coursesPerPage = 5;
+const auditLogsPerPage = 4;
+
+const standardScaleRows = [
+  { grade: 'A', title: 'Excellent Performance', range: '90 - 100%', status: 'Primary Rank', modifier: '4.0', tone: 'blue' },
+  { grade: 'B+', title: 'Very Good Performance', range: '85 - 89%', status: 'Standard', modifier: '3.5', tone: 'blue' },
+  { grade: 'B', title: 'Good Performance', range: '80 - 84%', status: 'Standard', modifier: '3.0', tone: 'blue' },
+  { grade: 'C+', title: 'Above Average', range: '75 - 79%', status: 'Standard', modifier: '2.5', tone: 'purple' },
+  { grade: 'C', title: 'Average Performance', range: '70 - 74%', status: 'Standard', modifier: '2.0', tone: 'purple' },
+  { grade: 'D', title: 'Below Average', range: '60 - 69%', status: 'Standard', modifier: '1.0', tone: 'blue' },
+  { grade: 'F', title: 'Unsatisfactory', range: 'Below 60%', status: 'Failing State', modifier: '0.0', tone: 'red' },
+];
+
+const roleLabel = (role = '') => role.charAt(0).toUpperCase() + role.slice(1);
+
+const getCourseDepartment = (course) => {
+  const source = `${course.code || ''} ${course.name || ''} ${course.description || ''}`.toLowerCase();
+
+  if (source.includes('design') || source.includes('creative') || source.includes('fine')) return 'Fine Arts';
+  if (source.includes('engineer') || source.includes('fluid') || source.includes('engr')) return 'Engineering';
+  if (source.includes('ethic') || source.includes('philos')) return 'Philosophy';
+  if (source.includes('info') || source.includes('technology') || source.includes('stack') || source.includes('comp') || source.includes('bsit')) return 'Comp. Science';
+
+  return 'General';
+};
+
+const IconButton = ({ label, className = '', children, onClick, disabled = false }) => (
+  <button type="button" className={`users-icon-btn ${className}`.trim()} aria-label={label} title={label} onClick={onClick} disabled={disabled}>
+    {children}
+  </button>
+);
+
+const CourseCatalog = ({
+  courses,
+  teachers,
+  searchQuery,
+  setSearchQuery,
+  departmentFilter,
+  setDepartmentFilter,
+  facultyFilter,
+  setFacultyFilter,
+  currentPage,
+  setCurrentPage,
+  openCreateCourse,
+  onEditCourse,
+  onDeleteCourse,
+  successMessage,
+  errorMessage,
+  isSaving,
+}) => {
+  const teacherMap = useMemo(() => {
+    return usersToMap(teachers);
+  }, [teachers]);
+  const courseRows = useMemo(() => {
+    return courses.map((course) => ({
+      ...course,
+      department: getCourseDepartment(course),
+      teacherName: course.teacherId ? teacherMap.get(course.teacherId) || course.teacherId : 'Unassigned',
+    }));
+  }, [courses, teacherMap]);
+  const departments = useMemo(() => {
+    return Array.from(new Set(courseRows.map((course) => course.department))).sort();
+  }, [courseRows]);
+  const filteredCourses = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+
+    return courseRows.filter((course) => {
+      const matchesQuery = !query || [course.code, course.name, course.department, course.teacherName]
+        .filter(Boolean)
+        .some((field) => String(field).toLowerCase().includes(query));
+      const matchesDepartment = departmentFilter === 'all' || course.department === departmentFilter;
+      const matchesFaculty = facultyFilter === 'all' || course.teacherId === facultyFilter;
+
+      return matchesQuery && matchesDepartment && matchesFaculty;
+    });
+  }, [courseRows, departmentFilter, facultyFilter, searchQuery]);
+  const totalPages = Math.max(1, Math.ceil(filteredCourses.length / coursesPerPage));
+  const pageCourses = filteredCourses.slice((currentPage - 1) * coursesPerPage, currentPage * coursesPerPage);
+  const activeCourses = courses.length;
+  const pendingReview = courseRows.filter((course) => !course.teacherId).length;
+  const pageStart = filteredCourses.length === 0 ? 0 : (currentPage - 1) * coursesPerPage + 1;
+  const pageEnd = Math.min(currentPage * coursesPerPage, filteredCourses.length);
+
+  return (
+    <section id="courses" className="course-catalog-panel">
+      <div className="course-catalog-header">
+        <h1>Course Catalog</h1>
+        <button type="button" className="course-create-btn" onClick={openCreateCourse} disabled={isSaving}>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Create Course
+        </button>
+      </div>
+
+      {successMessage && <StatusMessage variant="success" className="users-status-message">{successMessage}</StatusMessage>}
+      {errorMessage && <StatusMessage variant="error" className="users-status-message">{errorMessage}</StatusMessage>}
+
+      <div className="course-summary-grid">
+        <section className="course-summary-card primary">
+          <span>Total Active Courses</span>
+          <strong>{activeCourses}</strong>
+          <small>{activeCourses ? 'Courses currently available' : 'Create a course to begin'}</small>
+        </section>
+        <section className="course-summary-card review">
+          <span>Pending Review</span>
+          <strong>{pendingReview}</strong>
+          <small>{pendingReview ? 'Updates awaiting approval' : 'No updates awaiting approval'}</small>
+        </section>
+      </div>
+
+      <div className="course-filter-bar">
+        <label className="course-search">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m21 21-4.35-4.35" />
+            <circle cx="11" cy="11" r="7" />
+          </svg>
+          <input
+            type="search"
+            placeholder="Filter by course name or code..."
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+        </label>
+        <select value={departmentFilter} aria-label="Filter courses by department" onChange={(event) => setDepartmentFilter(event.target.value)}>
+          <option value="all">All Departments</option>
+          {departments.map((department) => <option key={department} value={department}>{department}</option>)}
+        </select>
+        <select value={facultyFilter} aria-label="Filter courses by faculty" onChange={(event) => setFacultyFilter(event.target.value)}>
+          <option value="all">All Faculty</option>
+          {teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{formatName(teacher.name)}</option>)}
+        </select>
+      </div>
+
+      <div className="course-table-card">
+        <table className="course-table">
+          <thead>
+            <tr>
+              <th>Course Code</th>
+              <th>Course Name</th>
+              <th>Teacher/Lead</th>
+              <th>Department</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pageCourses.map((course) => (
+              <tr key={course.id || course.code}>
+                <td>{course.code}</td>
+                <td>{course.name}</td>
+                <td className={course.teacherId ? '' : 'muted'}>{course.teacherName}</td>
+                <td><span className="course-department-pill">{course.department}</span></td>
+                <td>
+                  <span className="users-action-cell">
+                    <IconButton label={`Edit ${course.name}`} onClick={() => onEditCourse(course)} disabled={isSaving}>
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />
+                      </svg>
+                    </IconButton>
+                    <IconButton label={`Delete ${course.name}`} className="delete" onClick={() => onDeleteCourse(course)} disabled={isSaving}>
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M3 6h18" />
+                        <path d="M8 6V4h8v2" />
+                        <path d="M19 6l-1 15H6L5 6" />
+                        <path d="M10 11v6M14 11v6" />
+                      </svg>
+                    </IconButton>
+                  </span>
+                </td>
+              </tr>
+            ))}
+            {pageCourses.length === 0 && (
+              <tr>
+                <td colSpan="5" className="users-empty">No courses match these filters.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+
+        <div className="users-pagination">
+          <span>Showing {pageStart} to {pageEnd} of {filteredCourses.length} courses</span>
+          <div>
+            <button type="button" aria-label="Previous page" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage === 1}>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+            {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
+              <button key={page} type="button" className={page === currentPage ? 'active' : ''} onClick={() => setCurrentPage(page)}>
+                {page}
+              </button>
+            ))}
+            <button type="button" aria-label="Next page" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage === totalPages}>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+const usersToMap = (accounts) => {
+  return new Map(accounts.map((account) => [account.id, formatName(account.name)]));
+};
+
+const loadAdminRequest = async (label, request, fallback) => {
+  try {
+    return { label, data: await request(), failed: false };
+  } catch (error) {
+    return { label, data: fallback, failed: true, message: error instanceof Error ? error.message : 'Request failed' };
+  }
+};
+
+const accountDetailsToMap = (accounts) => {
+  return new Map(accounts.map((account) => [account.id, account]));
+};
+
+const formatAuditAction = (action = '') => {
+  return action
+    .toLowerCase()
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
+const GradeScaleConfiguration = ({ gradeScales, openCreateScale, onUnavailableAction, successMessage, errorMessage, isSaving }) => {
+  const scaleRows = gradeScales.length
+    ? gradeScales.map((scale, index) => ({
+        grade: scale.label,
+        title: scale.description || standardScaleRows[index]?.title || 'Custom Scale',
+        range: `${scale.minScore} - ${scale.maxScore}%`,
+        status: index === 0 ? 'Primary Rank' : 'Standard',
+        modifier: standardScaleRows[index]?.modifier || `${Math.max(0, 4 - index * 0.5).toFixed(1)}`,
+        tone: standardScaleRows[index]?.tone || 'blue',
+      }))
+    : standardScaleRows;
+
+  return (
+    <section id="grade-scale" className="grade-scale-panel">
+      <div className="course-catalog-header">
+        <h1>Grade Scale Configuration</h1>
+        <button type="button" className="course-create-btn" onClick={openCreateScale} disabled={isSaving}>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />
+          </svg>
+          Edit Grade Scale
+        </button>
+      </div>
+
+      {successMessage && <StatusMessage variant="success" className="users-status-message">{successMessage}</StatusMessage>}
+      {errorMessage && <StatusMessage variant="error" className="users-status-message">{errorMessage}</StatusMessage>}
+
+      <div className="grade-scale-layout">
+        <section className="grade-scale-card">
+          <h2>Standard Academic Scale</h2>
+          <table className="grade-scale-table">
+            <thead>
+              <tr>
+                <th>Grade</th>
+                <th>Score Range</th>
+                <th>Status</th>
+                <th>Modifier</th>
+              </tr>
+            </thead>
+            <tbody>
+              {scaleRows.map((row) => (
+                <tr key={`${row.grade}-${row.range}`}>
+                  <td>
+                    <span className="grade-scale-grade">
+                      <span className={`grade-badge ${row.tone}`}>{row.grade}</span>
+                      <strong>{row.title}</strong>
+                    </span>
+                  </td>
+                  <td className={row.tone === 'red' ? 'danger' : ''}>{row.range}</td>
+                  <td className={row.tone === 'red' ? 'danger' : ''}>{row.status}</td>
+                  <td className={row.tone === 'red' ? 'danger modifier' : 'modifier'}>{row.modifier}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+
+        <aside className="grading-side-panel">
+          <section className="grading-logic-card">
+            <h2>Grading Logic</h2>
+            <p>The current institution policy is based on Absolute Percentage individual faculty adjustment are permitted only through formal department review and manual override at the course level.</p>
+            <div className="rounding-meter">
+              <span>Rounding Strategy</span>
+              <strong>Half-Up</strong>
+              <b />
+            </div>
+          </section>
+
+          <section className="system-insight-card">
+            <h2>System Insight</h2>
+            <small>Academic Year 2024</small>
+            <p>"The Grade Scale hasn't been updated in 238 days. Consider a review if curriculum objectives have shifted."</p>
+            <button type="button" onClick={onUnavailableAction}>Run Performance Audit</button>
+          </section>
+        </aside>
+      </div>
+    </section>
+  );
+};
+
+const AuditLogsView = ({
+  auditLogs,
+  users,
+  dateRange,
+  setDateRange,
+  roleFilter,
+  setRoleFilter,
+  actionFilter,
+  setActionFilter,
+  currentPage,
+  setCurrentPage,
+}) => {
+  const userMap = useMemo(() => accountDetailsToMap(users), [users]);
+  const actionTypes = useMemo(() => Array.from(new Set(auditLogs.map((log) => log.action))).sort(), [auditLogs]);
+  const filteredLogs = useMemo(() => {
+    const now = Date.now();
+    const dayLimit = dateRange === 'all' ? null : Number(dateRange);
+
+    return auditLogs.filter((log) => {
+      const changedAt = new Date(log.changedAt).getTime();
+      const account = userMap.get(log.adminId);
+      const matchesDate = !dayLimit || (!Number.isNaN(changedAt) && now - changedAt <= dayLimit * 24 * 60 * 60 * 1000);
+      const matchesRole = roleFilter === 'all' || (account?.role || 'unknown') === roleFilter;
+      const matchesAction = actionFilter === 'all' || log.action === actionFilter;
+
+      return matchesDate && matchesRole && matchesAction;
+    });
+  }, [actionFilter, auditLogs, dateRange, roleFilter, userMap]);
+  const totalPages = Math.max(1, Math.ceil(filteredLogs.length / auditLogsPerPage));
+  const pageLogs = filteredLogs.slice((currentPage - 1) * auditLogsPerPage, currentPage * auditLogsPerPage);
+  const pageStart = filteredLogs.length === 0 ? 0 : (currentPage - 1) * auditLogsPerPage + 1;
+  const pageEnd = Math.min(currentPage * auditLogsPerPage, filteredLogs.length);
+  const clearFilters = () => {
+    setDateRange('30');
+    setRoleFilter('all');
+    setActionFilter('all');
+  };
+
+  return (
+    <section id="audit-logs" className="audit-logs-panel">
+      <h1>Audit Logs</h1>
+
+      <div className="audit-filter-bar">
+        <label>
+          <span>Date Range</span>
+          <select value={dateRange} onChange={(event) => setDateRange(event.target.value)}>
+            <option value="30">Last 30 Days</option>
+            <option value="7">Last 7 Days</option>
+            <option value="all">All Dates</option>
+          </select>
+        </label>
+        <label>
+          <span>User Role</span>
+          <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
+            <option value="all">All Roles</option>
+            <option value="admin">Admin</option>
+            <option value="teacher">Teacher</option>
+            <option value="student">Student</option>
+            <option value="unknown">Unknown</option>
+          </select>
+        </label>
+        <label>
+          <span>Action Type</span>
+          <select value={actionFilter} onChange={(event) => setActionFilter(event.target.value)}>
+            <option value="all">All Actions</option>
+            {actionTypes.map((action) => <option key={action} value={action}>{formatAuditAction(action)}</option>)}
+          </select>
+        </label>
+        <button type="button" onClick={clearFilters}>Clear Filters</button>
+      </div>
+
+      <div className="audit-table-card">
+        <table className="audit-table">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>User</th>
+              <th>Action</th>
+              <th>Entity Affected</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pageLogs.map((log) => {
+              const account = userMap.get(log.adminId);
+              const changedAt = new Date(log.changedAt);
+              const isFailed = String(log.action).toLowerCase().includes('fail');
+
+              return (
+                <tr key={log.id}>
+                  <td>
+                    <strong>{Number.isNaN(changedAt.getTime()) ? 'Unknown' : changedAt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</strong>
+                    <small>{Number.isNaN(changedAt.getTime()) ? '' : changedAt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</small>
+                  </td>
+                  <td>
+                    <span className="audit-user-cell">
+                      <span className="users-avatar">{account ? formatName(account.name).slice(0, 2).toUpperCase() : 'U'}</span>
+                      <span>
+                        <strong>{account ? formatName(account.name) : (log.adminId || 'System')}</strong>
+                        <small>{account?.role ? roleLabel(account.role) : 'Unknown'}</small>
+                      </span>
+                    </span>
+                  </td>
+                  <td className={isFailed ? 'danger' : ''}>{formatAuditAction(log.action)}</td>
+                  <td>{log.tableName}:<br />{log.recordId}</td>
+                  <td><span className={`audit-status ${isFailed ? 'failed' : ''}`}>{isFailed ? 'Failed' : 'Success'}</span></td>
+                </tr>
+              );
+            })}
+            {pageLogs.length === 0 && (
+              <tr><td colSpan="5" className="users-empty">No audit logs match these filters.</td></tr>
+            )}
+          </tbody>
+        </table>
+
+        <div className="users-pagination">
+          <span>Showing {pageStart} to {pageEnd} of {filteredLogs.length} logs</span>
+          <div>
+            <button type="button" aria-label="Previous page" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage === 1}>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+            {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
+              <button key={page} type="button" className={page === currentPage ? 'active' : ''} onClick={() => setCurrentPage(page)}>
+                {page}
+              </button>
+            ))}
+            <button type="button" aria-label="Next page" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage === totalPages}>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
 
 const ManageUsers = () => {
   const { users, reloadData } = useAuth();
+  const location = useLocation();
   const restoreInputRef = useRef(null);
   const [userForm, setUserForm] = useState(emptyUserForm);
   const [editingUserId, setEditingUserId] = useState('');
+  const [editingCourseId, setEditingCourseId] = useState('');
+  const [isUserFormOpen, setIsUserFormOpen] = useState(false);
+  const [isCourseFormOpen, setIsCourseFormOpen] = useState(false);
+  const [isScaleFormOpen, setIsScaleFormOpen] = useState(false);
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [courseSearchQuery, setCourseSearchQuery] = useState('');
+  const [courseDepartmentFilter, setCourseDepartmentFilter] = useState('all');
+  const [courseFacultyFilter, setCourseFacultyFilter] = useState('all');
+  const [courseCurrentPage, setCourseCurrentPage] = useState(1);
+  const [auditDateRange, setAuditDateRange] = useState('30');
+  const [auditRoleFilter, setAuditRoleFilter] = useState('all');
+  const [auditActionFilter, setAuditActionFilter] = useState('all');
+  const [auditCurrentPage, setAuditCurrentPage] = useState(1);
   const [assignmentForm, setAssignmentForm] = useState(emptyAssignmentForm);
   const [courseForm, setCourseForm] = useState(emptyCourseForm);
   const [subjectForm, setSubjectForm] = useState(emptySubjectForm);
@@ -46,25 +516,73 @@ const ManageUsers = () => {
 
   const teachers = users.filter((user) => user.role === 'teacher');
   const students = users.filter((user) => user.role === 'student');
+  const assignedTeacherIds = useMemo(() => new Set(assignments.map((assignment) => assignment.teacherId)), [assignments]);
+  const filteredUsers = useMemo(() => {
+    return users.filter((account) => roleFilter === 'all' || account.role === roleFilter);
+  }, [roleFilter, users]);
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / usersPerPage));
+  const pageUsers = filteredUsers.slice((currentPage - 1) * usersPerPage, currentPage * usersPerPage);
+  const activeAdminView = {
+    '#courses': 'courses',
+    '#grade-scale': 'grade-scale',
+    '#audit-logs': 'audit-logs',
+  }[location.hash] || 'users';
 
   const loadAdminData = async () => {
-    const [assignmentData, courseData, subjectData, scaleData, auditData] = await Promise.all([
-      getTeacherAssignments(),
-      getCourses(),
-      getSubjects(),
-      getGradeScales(),
-      getAuditLogs(),
+    const [assignmentResult, courseResult, subjectResult, scaleResult, auditResult] = await Promise.all([
+      loadAdminRequest('teacher assignments', getTeacherAssignments, []),
+      loadAdminRequest('courses', getCourses, []),
+      loadAdminRequest('subjects', getSubjects, []),
+      loadAdminRequest('grade scales', getGradeScales, []),
+      loadAdminRequest('audit logs', getAuditLogs, []),
     ]);
 
-    setAssignments(assignmentData);
-    setCourses(courseData);
-    setSubjects(subjectData);
-    setGradeScales(scaleData);
-    setAuditLogs(auditData);
+    setAssignments(assignmentResult.data);
+    setCourses(courseResult.data);
+    setSubjects(subjectResult.data);
+    setGradeScales(scaleResult.data);
+    setAuditLogs(auditResult.data);
+
+    const failedRequests = [assignmentResult, courseResult, subjectResult, scaleResult, auditResult].filter((result) => result.failed);
+
+    if (failedRequests.length > 0) {
+      throw new Error(`Could not load admin ${failedRequests.map((result) => result.label).join(', ')}. Restart the server if this is a new database/schema change.`);
+    }
   };
 
   useEffect(() => {
-    loadAdminData().catch(() => setErrorMessage('Some admin data could not be loaded.'));
+    loadAdminData().catch((error) => setErrorMessage(error instanceof Error ? error.message : 'Some admin data could not be loaded.'));
+  }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [roleFilter, users.length]);
+
+  useEffect(() => {
+    setCourseCurrentPage(1);
+  }, [courseDepartmentFilter, courseFacultyFilter, courseSearchQuery, courses.length]);
+
+  useEffect(() => {
+    setAuditCurrentPage(1);
+  }, [auditActionFilter, auditDateRange, auditLogs.length, auditRoleFilter]);
+
+  useEffect(() => {
+    const scrollToHash = () => {
+      const sectionId = window.location.hash.replace('#', '');
+
+      if (!sectionId) {
+        return;
+      }
+
+      window.setTimeout(() => {
+        document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 0);
+    };
+
+    scrollToHash();
+    window.addEventListener('hashchange', scrollToHash);
+
+    return () => window.removeEventListener('hashchange', scrollToHash);
   }, []);
 
   const runAdminAction = async (action, success) => {
@@ -80,6 +598,63 @@ const ManageUsers = () => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const openCreateUser = () => {
+    setEditingUserId('');
+    setUserForm(emptyUserForm);
+    setIsUserFormOpen(true);
+  };
+
+  const openCreateCourse = () => {
+    setEditingCourseId('');
+    setCourseForm(emptyCourseForm);
+    setIsCourseFormOpen(true);
+  };
+
+  const handleEditCourse = (course) => {
+    setEditingCourseId(String(course.id));
+    setCourseForm({
+      code: course.code || '',
+      name: course.name || '',
+      description: course.description || '',
+      teacherId: course.teacherId || '',
+    });
+    setIsCourseFormOpen(true);
+  };
+
+  const closeCourseForm = () => {
+    if (isSaving) {
+      return;
+    }
+
+    setEditingCourseId('');
+    setCourseForm(emptyCourseForm);
+    setIsCourseFormOpen(false);
+  };
+
+  const openCreateScale = () => {
+    setScaleForm(emptyScaleForm);
+    setIsScaleFormOpen(true);
+  };
+
+  const closeScaleForm = () => {
+    if (isSaving) {
+      return;
+    }
+
+    setScaleForm(emptyScaleForm);
+    setIsScaleFormOpen(false);
+  };
+
+  const closeUserForm = () => {
+    if (isSaving) {
+      return;
+    }
+
+    setEditingUserId('');
+    setUserForm(emptyUserForm);
+    setIsUserFormOpen(false);
   };
 
   const handleSubmitUser = (event) => {
@@ -98,12 +673,14 @@ const ManageUsers = () => {
 
       setUserForm(emptyUserForm);
       setEditingUserId('');
+      setIsUserFormOpen(false);
     }, editingUserId ? 'User updated successfully.' : 'User created successfully.');
   };
 
   const handleEditUser = (currentUser) => {
     setEditingUserId(currentUser.id);
     setUserForm({ id: currentUser.id, name: currentUser.name, email: currentUser.email, role: currentUser.role, password: '' });
+    setIsUserFormOpen(true);
   };
 
   const handleDeleteUser = (currentUser) => {
@@ -139,9 +716,30 @@ const ManageUsers = () => {
   const handleSubmitCourse = (event) => {
     event.preventDefault();
     runAdminAction(async () => {
-      await createCourse(courseForm);
+      if (editingCourseId) {
+        await updateCourse(Number(editingCourseId), courseForm);
+      } else {
+        await createCourse(courseForm);
+      }
+
       setCourseForm(emptyCourseForm);
-    }, 'Course created successfully.');
+      setEditingCourseId('');
+      setIsCourseFormOpen(false);
+    }, editingCourseId ? 'Course updated successfully.' : 'Course created successfully.');
+  };
+
+  const handleDeleteCourse = (course) => {
+    if (!course.id) {
+      setSuccessMessage('');
+      setErrorMessage('This course cannot be deleted because it has no course ID.');
+      return;
+    }
+
+    if (!window.confirm(`Delete ${course.name}? This removes the course from the catalog.`)) {
+      return;
+    }
+
+    runAdminAction(() => deleteCourse(course.id), 'Course deleted successfully.');
   };
 
   const handleSubmitSubject = (event) => {
@@ -157,7 +755,13 @@ const ManageUsers = () => {
     runAdminAction(async () => {
       await createGradeScale({ ...scaleForm, minScore: Number(scaleForm.minScore), maxScore: Number(scaleForm.maxScore) });
       setScaleForm(emptyScaleForm);
+      setIsScaleFormOpen(false);
     }, 'Grade scale saved.');
+  };
+
+  const handleUnavailableScaleAction = () => {
+    setSuccessMessage('');
+    setErrorMessage('Performance audit automation is not available from the current API yet.');
   };
 
   const handleBackup = async () => {
@@ -196,207 +800,397 @@ const ManageUsers = () => {
     setter((currentForm) => ({ ...currentForm, [name]: value }));
   };
 
+  const getAccountStatus = (account) => {
+    if (account.role === 'teacher' && !assignedTeacherIds.has(account.id)) {
+      return 'Unassigned';
+    }
+
+    return 'Active';
+  };
+
+  const pageStart = filteredUsers.length === 0 ? 0 : (currentPage - 1) * usersPerPage + 1;
+  const pageEnd = Math.min(currentPage * usersPerPage, filteredUsers.length);
+
   return (
-    <div style={styles.page}>
-      <div style={styles.header}>
-        <div>
-          <h2 style={styles.title}>Admin Management</h2>
-          <p style={styles.subtitle}>Accounts, assignments, courses, reports, and system controls</p>
+    <div className="manage-users-page">
+      {activeAdminView === 'courses' && (
+        <CourseCatalog
+          courses={courses}
+          teachers={teachers}
+          searchQuery={courseSearchQuery}
+          setSearchQuery={setCourseSearchQuery}
+          departmentFilter={courseDepartmentFilter}
+          setDepartmentFilter={setCourseDepartmentFilter}
+          facultyFilter={courseFacultyFilter}
+          setFacultyFilter={setCourseFacultyFilter}
+          currentPage={courseCurrentPage}
+          setCurrentPage={setCourseCurrentPage}
+          openCreateCourse={openCreateCourse}
+          onEditCourse={handleEditCourse}
+          onDeleteCourse={handleDeleteCourse}
+          successMessage={successMessage}
+          errorMessage={errorMessage}
+          isSaving={isSaving}
+        />
+      )}
+
+      {activeAdminView === 'grade-scale' && (
+        <GradeScaleConfiguration
+          gradeScales={gradeScales}
+          openCreateScale={openCreateScale}
+          onUnavailableAction={handleUnavailableScaleAction}
+          successMessage={successMessage}
+          errorMessage={errorMessage}
+          isSaving={isSaving}
+        />
+      )}
+
+      {activeAdminView === 'audit-logs' && (
+        <AuditLogsView
+          auditLogs={auditLogs}
+          users={users}
+          dateRange={auditDateRange}
+          setDateRange={setAuditDateRange}
+          roleFilter={auditRoleFilter}
+          setRoleFilter={setAuditRoleFilter}
+          actionFilter={auditActionFilter}
+          setActionFilter={setAuditActionFilter}
+          currentPage={auditCurrentPage}
+          setCurrentPage={setAuditCurrentPage}
+        />
+      )}
+
+      {activeAdminView === 'users' && (
+        <>
+      <section id="users" className="users-panel">
+        <div className="users-page-header">
+          <h1>Users</h1>
+          <div className="users-page-actions">
+            <select value={roleFilter} aria-label="Filter users by role" onChange={(event) => setRoleFilter(event.target.value)}>
+              <option value="all">All Roles</option>
+              <option value="student">Students</option>
+              <option value="teacher">Teachers</option>
+              <option value="admin">Admins</option>
+            </select>
+            <button type="button" className="users-primary-btn" onClick={openCreateUser} disabled={isSaving}>+ Add User</button>
+          </div>
         </div>
-        <div style={styles.headerActions}>
-          <button type="button" style={styles.primaryBtn} onClick={handleBackup} disabled={isSaving}>Backup Data</button>
-          <button type="button" style={styles.secondaryBtn} onClick={() => restoreInputRef.current?.click()} disabled={isSaving}>Restore Data</button>
-          <input ref={restoreInputRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleRestoreFile} />
-        </div>
-      </div>
 
-      {successMessage && <StatusMessage variant="success">{successMessage}</StatusMessage>}
-      {errorMessage && <StatusMessage variant="error">{errorMessage}</StatusMessage>}
+        {successMessage && <StatusMessage variant="success" className="users-status-message">{successMessage}</StatusMessage>}
+        {errorMessage && <StatusMessage variant="error" className="users-status-message">{errorMessage}</StatusMessage>}
 
-      <section style={styles.panel}>
-        <h3 style={styles.panelTitle}>{editingUserId ? 'Edit User' : 'Create User'}</h3>
-        <form style={styles.formGrid} onSubmit={handleSubmitUser}>
-          <input name="id" placeholder="ID number" value={userForm.id} onChange={updateForm(setUserForm)} disabled={Boolean(editingUserId)} required />
-          <input name="name" placeholder="Full name" value={userForm.name} onChange={updateForm(setUserForm)} required />
-          <input name="email" type="email" placeholder="Email" value={userForm.email} onChange={updateForm(setUserForm)} required />
-          <select name="role" value={userForm.role} onChange={updateForm(setUserForm)}>
-            <option value="student">Student</option>
-            <option value="teacher">Teacher</option>
-            <option value="admin">Admin</option>
-          </select>
-          {!editingUserId && <input name="password" type="password" placeholder="Temporary password" value={userForm.password} onChange={updateForm(setUserForm)} required />}
-          <button type="submit" style={styles.primaryBtn} disabled={isSaving}>{editingUserId ? 'Save User' : 'Create User'}</button>
-          {editingUserId && <button type="button" style={styles.secondaryBtn} onClick={() => { setEditingUserId(''); setUserForm(emptyUserForm); }}>Cancel</button>}
-        </form>
-      </section>
-
-      <section style={styles.panel}>
-        <h3 style={styles.panelTitle}>Registered Accounts</h3>
-        <div style={styles.tableWrapper}>
-          <table style={styles.table}>
+        <div className="users-table-card">
+          <table className="users-table">
             <thead>
               <tr>
-                <th style={styles.th}>ID</th>
-                <th style={styles.th}>Name</th>
-                <th style={styles.th}>Email</th>
-                <th style={styles.th}>Role</th>
-                <th style={styles.th}>Actions</th>
+                <th>Name</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {users.map((currentUser) => (
-                <tr key={currentUser.id} style={styles.row}>
-                  <td style={styles.td}>{currentUser.id}</td>
-                  <td style={styles.td}>{currentUser.name}</td>
-                  <td style={styles.td}>{currentUser.email}</td>
-                  <td style={styles.td}>{currentUser.role}</td>
-                  <td style={styles.td}>
-                    <button type="button" style={styles.smallBtn} onClick={() => handleEditUser(currentUser)}>Edit</button>
-                    <button type="button" style={styles.smallBtn} onClick={() => handleResetPassword(currentUser)}>Reset Password</button>
-                    <button type="button" style={styles.dangerBtn} onClick={() => handleDeleteUser(currentUser)}>Delete</button>
-                  </td>
+              {pageUsers.map((currentUser) => {
+                const status = getAccountStatus(currentUser);
+                const displayName = formatName(currentUser.name);
+                const initials = displayName
+                  .split(' ')
+                  .map((part) => part[0])
+                  .join('')
+                  .slice(0, 2)
+                  .toUpperCase();
+
+                return (
+                  <tr key={currentUser.id}>
+                    <td>
+                      <span className="users-name-cell">
+                        <span className="users-avatar">{initials}</span>
+                        <span>
+                          <strong>{displayName}</strong>
+                          <small>{currentUser.email}</small>
+                        </span>
+                      </span>
+                    </td>
+                    <td>{roleLabel(currentUser.role)}</td>
+                    <td>
+                      <span className={`users-status-pill ${status === 'Unassigned' ? 'unassigned' : ''}`}>{status}</span>
+                    </td>
+                    <td>
+                      <span className="users-action-cell">
+                        <IconButton label={`Edit ${displayName}`} onClick={() => handleEditUser(currentUser)} disabled={isSaving}>
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M12 20h9" />
+                            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />
+                          </svg>
+                        </IconButton>
+                        <IconButton label={`Reset password for ${displayName}`} className="reset" onClick={() => handleResetPassword(currentUser)} disabled={isSaving}>
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M15 7a4 4 0 1 0-3.4 4" />
+                            <path d="M12 11h9l-2 2 2 2" />
+                          </svg>
+                        </IconButton>
+                        <IconButton label={`Delete ${displayName}`} className="delete" onClick={() => handleDeleteUser(currentUser)} disabled={isSaving}>
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M3 6h18" />
+                            <path d="M8 6V4h8v2" />
+                            <path d="M19 6l-1 15H6L5 6" />
+                            <path d="M10 11v6M14 11v6" />
+                          </svg>
+                        </IconButton>
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+              {pageUsers.length === 0 && (
+                <tr>
+                  <td colSpan="4" className="users-empty">No users match this role.</td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
+
+          <div className="users-pagination">
+            <span>Showing {pageStart} to {pageEnd} of {filteredUsers.length} entries</span>
+            <div>
+              <button type="button" aria-label="Previous page" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage === 1}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m15 18-6-6 6-6" />
+                </svg>
+              </button>
+              {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
+                <button key={page} type="button" className={page === currentPage ? 'active' : ''} onClick={() => setCurrentPage(page)}>
+                  {page}
+                </button>
+              ))}
+              <button type="button" aria-label="Next page" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage === totalPages}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
       </section>
 
-      <section style={styles.panel}>
-        <h3 style={styles.panelTitle}>Assign Teachers to Students</h3>
-        <form style={styles.formGrid} onSubmit={handleSubmitAssignment}>
-          <select name="teacherId" value={assignmentForm.teacherId} onChange={updateForm(setAssignmentForm)} required>
-            <option value="">Teacher</option>
-            {teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}
-          </select>
-          <select name="studentId" value={assignmentForm.studentId} onChange={updateForm(setAssignmentForm)} required>
-            <option value="">Student</option>
-            {students.map((student) => <option key={student.id} value={student.id}>{student.name}</option>)}
-          </select>
-          <input name="subject" placeholder="Subject" value={assignmentForm.subject} onChange={updateForm(setAssignmentForm)} required />
-          <input name="course" placeholder="Course" value={assignmentForm.course} onChange={updateForm(setAssignmentForm)} />
-          <input name="section" placeholder="Section" value={assignmentForm.section} onChange={updateForm(setAssignmentForm)} />
-          <input name="schoolYear" placeholder="School year" value={assignmentForm.schoolYear} onChange={updateForm(setAssignmentForm)} />
-          <select name="semester" value={assignmentForm.semester} onChange={updateForm(setAssignmentForm)}>
-            <option>1st Semester</option>
-            <option>2nd Semester</option>
-            <option>Summer</option>
-          </select>
-          <button type="submit" style={styles.primaryBtn} disabled={isSaving}>Save Assignment</button>
-        </form>
-        <div style={styles.chipGrid}>
-          {assignments.map((assignment) => (
-            <span key={assignment.id} style={styles.chip}>
-              {assignment.teacherId} {'->'} {assignment.studentId} / {assignment.subject}
-              <button type="button" onClick={() => handleDeleteAssignment(assignment)}>x</button>
-            </span>
-          ))}
-        </div>
-      </section>
+      <div className="admin-tools-grid">
+        <section id="assignments" className="admin-tool-panel">
+          <h2>Assign Teachers to Students</h2>
+          <form className="admin-form-grid" onSubmit={handleSubmitAssignment}>
+            <select name="teacherId" value={assignmentForm.teacherId} onChange={updateForm(setAssignmentForm)} required>
+              <option value="">Teacher</option>
+              {teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{formatName(teacher.name)}</option>)}
+            </select>
+            <select name="studentId" value={assignmentForm.studentId} onChange={updateForm(setAssignmentForm)} required>
+              <option value="">Student</option>
+              {students.map((student) => <option key={student.id} value={student.id}>{formatName(student.name)}</option>)}
+            </select>
+            <input name="subject" placeholder="Subject" value={assignmentForm.subject} onChange={updateForm(setAssignmentForm)} required />
+            <input name="course" placeholder="Course" value={assignmentForm.course} onChange={updateForm(setAssignmentForm)} />
+            <input name="section" placeholder="Section" value={assignmentForm.section} onChange={updateForm(setAssignmentForm)} />
+            <input name="schoolYear" placeholder="School year" value={assignmentForm.schoolYear} onChange={updateForm(setAssignmentForm)} />
+            <select name="semester" value={assignmentForm.semester} onChange={updateForm(setAssignmentForm)}>
+              <option>1st Semester</option>
+              <option>2nd Semester</option>
+              <option>Summer</option>
+            </select>
+            <button type="submit" className="admin-tool-primary" disabled={isSaving}>Save Assignment</button>
+          </form>
+          <div className="admin-chip-grid">
+            {assignments.map((assignment) => (
+              <span key={assignment.id} className="admin-chip">
+                {assignment.teacherId} to {assignment.studentId} / {assignment.subject}
+                <button type="button" onClick={() => handleDeleteAssignment(assignment)} disabled={isSaving}>x</button>
+              </span>
+            ))}
+          </div>
+        </section>
 
-      <div style={styles.twoColumn}>
-        <section style={styles.panel}>
-          <h3 style={styles.panelTitle}>Courses</h3>
-          <form style={styles.stackForm} onSubmit={handleSubmitCourse}>
+        <section id="courses" className="admin-tool-panel">
+          <h2>Courses</h2>
+          <form className="admin-stack-form" onSubmit={handleSubmitCourse}>
             <input name="code" placeholder="Code" value={courseForm.code} onChange={updateForm(setCourseForm)} required />
             <input name="name" placeholder="Course name" value={courseForm.name} onChange={updateForm(setCourseForm)} required />
             <input name="description" placeholder="Description" value={courseForm.description} onChange={updateForm(setCourseForm)} />
             <select name="teacherId" value={courseForm.teacherId} onChange={updateForm(setCourseForm)}>
               <option value="">Teacher</option>
-              {teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}
+              {teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{formatName(teacher.name)}</option>)}
             </select>
-            <button type="submit" style={styles.primaryBtn}>Create Course</button>
+            <button type="submit" className="admin-tool-primary" disabled={isSaving}>Create Course</button>
           </form>
-          <ul style={styles.list}>{courses.map((course) => <li key={course.id}>{course.code} - {course.name}</li>)}</ul>
+          <ul className="admin-list">{courses.map((course) => <li key={course.id}>{course.code} - {course.name}</li>)}</ul>
         </section>
 
-        <section style={styles.panel}>
-          <h3 style={styles.panelTitle}>Subjects</h3>
-          <form style={styles.stackForm} onSubmit={handleSubmitSubject}>
+        <section id="subjects" className="admin-tool-panel">
+          <h2>Subjects</h2>
+          <form className="admin-stack-form" onSubmit={handleSubmitSubject}>
             <input name="name" placeholder="Subject name" value={subjectForm.name} onChange={updateForm(setSubjectForm)} required />
             <select name="teacherId" value={subjectForm.teacherId} onChange={updateForm(setSubjectForm)} required>
               <option value="">Teacher</option>
-              {teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}
+              {teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{formatName(teacher.name)}</option>)}
             </select>
-            <button type="submit" style={styles.primaryBtn}>Create Subject</button>
+            <button type="submit" className="admin-tool-primary" disabled={isSaving}>Create Subject</button>
           </form>
-          <ul style={styles.list}>{subjects.map((subject) => <li key={subject.id}>{subject.name} - {subject.teacherId}</li>)}</ul>
+          <ul className="admin-list">{subjects.map((subject) => <li key={subject.id}>{subject.name} - {subject.teacherId}</li>)}</ul>
+        </section>
+
+        <section id="grade-scale" className="admin-tool-panel">
+          <h2>Grade Scale</h2>
+          <form className="admin-form-grid" onSubmit={handleSubmitScale}>
+            <input name="label" placeholder="Label" value={scaleForm.label} onChange={updateForm(setScaleForm)} required />
+            <input name="minScore" type="number" placeholder="Min" value={scaleForm.minScore} onChange={updateForm(setScaleForm)} required />
+            <input name="maxScore" type="number" placeholder="Max" value={scaleForm.maxScore} onChange={updateForm(setScaleForm)} required />
+            <input name="description" placeholder="Rubric description" value={scaleForm.description} onChange={updateForm(setScaleForm)} />
+            <button type="submit" className="admin-tool-primary" disabled={isSaving}>Save Scale</button>
+          </form>
+          <div className="admin-chip-grid">
+            {gradeScales.map((scale) => (
+              <span key={scale.id} className="admin-chip">{scale.label}: {scale.minScore}-{scale.maxScore}</span>
+            ))}
+          </div>
+        </section>
+
+        <section id="audit-logs" className="admin-tool-panel">
+          <h2>Audit Logs</h2>
+          <div className="admin-table-scroll">
+            <table className="admin-small-table">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Admin</th>
+                  <th>Action</th>
+                  <th>Table</th>
+                  <th>Record</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auditLogs.map((log) => (
+                  <tr key={log.id}>
+                    <td>{new Date(log.changedAt).toLocaleString()}</td>
+                    <td>{log.adminId || 'system'}</td>
+                    <td>{log.action}</td>
+                    <td>{log.tableName}</td>
+                    <td>{log.recordId}</td>
+                  </tr>
+                ))}
+                {auditLogs.length === 0 && (
+                  <tr><td colSpan="5">No audit logs yet.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="admin-tool-panel">
+          <h2>System Data</h2>
+          <div className="admin-data-actions">
+            <button type="button" className="admin-tool-primary" onClick={handleBackup} disabled={isSaving}>Backup Data</button>
+            <button type="button" className="admin-tool-secondary" onClick={() => restoreInputRef.current?.click()} disabled={isSaving}>Restore Data</button>
+            <input ref={restoreInputRef} type="file" accept=".json" className="admin-hidden-file" onChange={handleRestoreFile} />
+          </div>
         </section>
       </div>
+        </>
+      )}
 
-      <section style={styles.panel}>
-        <h3 style={styles.panelTitle}>Grade Scales and Rubrics</h3>
-        <form style={styles.formGrid} onSubmit={handleSubmitScale}>
-          <input name="label" placeholder="Label" value={scaleForm.label} onChange={updateForm(setScaleForm)} required />
-          <input name="minScore" type="number" placeholder="Min" value={scaleForm.minScore} onChange={updateForm(setScaleForm)} required />
-          <input name="maxScore" type="number" placeholder="Max" value={scaleForm.maxScore} onChange={updateForm(setScaleForm)} required />
-          <input name="description" placeholder="Rubric description" value={scaleForm.description} onChange={updateForm(setScaleForm)} />
-          <button type="submit" style={styles.primaryBtn}>Save Scale</button>
-        </form>
-        <div style={styles.chipGrid}>
-          {gradeScales.map((scale) => (
-            <span key={scale.id} style={styles.chip}>{scale.label}: {scale.minScore}-{scale.maxScore}</span>
-          ))}
+      {isUserFormOpen && (
+        <div className="users-modal-overlay" role="presentation">
+          <form className="users-modal" onSubmit={handleSubmitUser} role="dialog" aria-modal="true" aria-labelledby="users-modal-title">
+            <h2 id="users-modal-title">{editingUserId ? 'Edit User' : 'Add User'}</h2>
+            <label>
+              <span>ID Number</span>
+              <input name="id" placeholder="ID number" value={userForm.id} onChange={updateForm(setUserForm)} disabled={Boolean(editingUserId)} required />
+            </label>
+            <label>
+              <span>Full Name</span>
+              <input name="name" placeholder="Full name" value={userForm.name} onChange={updateForm(setUserForm)} required />
+            </label>
+            <label>
+              <span>Email</span>
+              <input name="email" type="email" placeholder="Email" value={userForm.email} onChange={updateForm(setUserForm)} required />
+            </label>
+            <label>
+              <span>Role</span>
+              <select name="role" value={userForm.role} onChange={updateForm(setUserForm)}>
+                <option value="student">Student</option>
+                <option value="teacher">Teacher</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+            {!editingUserId && (
+              <label>
+                <span>Temporary Password</span>
+                <input name="password" type="password" placeholder="Temporary password" value={userForm.password} onChange={updateForm(setUserForm)} required />
+              </label>
+            )}
+            <div className="users-modal-actions">
+              <button type="button" className="admin-tool-secondary" onClick={closeUserForm} disabled={isSaving}>Cancel</button>
+              <button type="submit" className="users-primary-btn" disabled={isSaving}>{editingUserId ? 'Save User' : 'Add User'}</button>
+            </div>
+          </form>
         </div>
-      </section>
+      )}
 
-      <section style={styles.panel}>
-        <h3 style={styles.panelTitle}>Audit Logs</h3>
-        <div style={styles.tableWrapper}>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>When</th>
-                <th style={styles.th}>Admin</th>
-                <th style={styles.th}>Action</th>
-                <th style={styles.th}>Table</th>
-                <th style={styles.th}>Record</th>
-              </tr>
-            </thead>
-            <tbody>
-              {auditLogs.map((log) => (
-                <tr key={log.id} style={styles.row}>
-                  <td style={styles.td}>{new Date(log.changedAt).toLocaleString()}</td>
-                  <td style={styles.td}>{log.adminId || 'system'}</td>
-                  <td style={styles.td}>{log.action}</td>
-                  <td style={styles.td}>{log.tableName}</td>
-                  <td style={styles.td}>{log.recordId}</td>
-                </tr>
-              ))}
-              {auditLogs.length === 0 && (
-                <tr><td style={styles.td} colSpan="5">No audit logs yet.</td></tr>
-              )}
-            </tbody>
-          </table>
+      {isCourseFormOpen && (
+        <div className="users-modal-overlay" role="presentation">
+          <form className="users-modal" onSubmit={handleSubmitCourse} role="dialog" aria-modal="true" aria-labelledby="courses-modal-title">
+            <h2 id="courses-modal-title">{editingCourseId ? 'Edit Course' : 'Create Course'}</h2>
+            <label>
+              <span>Course Code</span>
+              <input name="code" placeholder="e.g. BSIT-208" value={courseForm.code} onChange={updateForm(setCourseForm)} required />
+            </label>
+            <label>
+              <span>Course Name</span>
+              <input name="name" placeholder="Course name" value={courseForm.name} onChange={updateForm(setCourseForm)} required />
+            </label>
+            <label>
+              <span>Description</span>
+              <input name="description" placeholder="Department or short description" value={courseForm.description} onChange={updateForm(setCourseForm)} />
+            </label>
+            <label>
+              <span>Teacher Lead</span>
+              <select name="teacherId" value={courseForm.teacherId} onChange={updateForm(setCourseForm)}>
+                <option value="">Unassigned</option>
+                {teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{formatName(teacher.name)}</option>)}
+              </select>
+            </label>
+            <div className="users-modal-actions">
+              <button type="button" className="admin-tool-secondary" onClick={closeCourseForm} disabled={isSaving}>Cancel</button>
+              <button type="submit" className="users-primary-btn" disabled={isSaving}>{editingCourseId ? 'Save Course' : 'Create Course'}</button>
+            </div>
+          </form>
         </div>
-      </section>
+      )}
+
+      {isScaleFormOpen && (
+        <div className="users-modal-overlay" role="presentation">
+          <form className="users-modal" onSubmit={handleSubmitScale} role="dialog" aria-modal="true" aria-labelledby="scale-modal-title">
+            <h2 id="scale-modal-title">Edit Grade Scale</h2>
+            <label>
+              <span>Grade Label</span>
+              <input name="label" placeholder="e.g. A" value={scaleForm.label} onChange={updateForm(setScaleForm)} required />
+            </label>
+            <label>
+              <span>Minimum Score</span>
+              <input name="minScore" type="number" min="0" max="100" value={scaleForm.minScore} onChange={updateForm(setScaleForm)} required />
+            </label>
+            <label>
+              <span>Maximum Score</span>
+              <input name="maxScore" type="number" min="0" max="100" value={scaleForm.maxScore} onChange={updateForm(setScaleForm)} required />
+            </label>
+            <label>
+              <span>Description</span>
+              <input name="description" placeholder="Performance label" value={scaleForm.description} onChange={updateForm(setScaleForm)} />
+            </label>
+            <div className="users-modal-actions">
+              <button type="button" className="admin-tool-secondary" onClick={closeScaleForm} disabled={isSaving}>Cancel</button>
+              <button type="submit" className="users-primary-btn" disabled={isSaving}>Save Scale</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
-};
-
-const styles = {
-  page: { padding: '20px', textAlign: 'left', overflowY: 'auto', color: '#1f2937' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap', marginBottom: '16px' },
-  headerActions: { display: 'flex', gap: '10px', flexWrap: 'wrap' },
-  title: { color: '#1e40af', margin: 0 },
-  subtitle: { color: '#475569', marginTop: '8px' },
-  panel: { background: '#ffffff', border: '1px solid #d8dee9', borderRadius: '8px', padding: '16px', marginBottom: '16px' },
-  panelTitle: { margin: '0 0 14px', color: '#111827' },
-  formGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', alignItems: 'center' },
-  stackForm: { display: 'grid', gap: '10px' },
-  twoColumn: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' },
-  tableWrapper: { width: '100%', overflowX: 'auto' },
-  table: { width: '100%', minWidth: '760px', borderCollapse: 'collapse', background: 'white' },
-  row: { borderBottom: '1px solid #e5e7eb' },
-  th: { padding: '12px', borderBottom: '2px solid #ddd', color: '#1e293b', textAlign: 'left' },
-  td: { padding: '12px', color: '#1f2937', verticalAlign: 'middle' },
-  primaryBtn: { padding: '10px 14px', cursor: 'pointer', background: '#2563eb', color: '#ffffff', border: 'none', borderRadius: '8px', fontWeight: 800 },
-  secondaryBtn: { padding: '10px 14px', cursor: 'pointer', background: '#e5e7eb', color: '#111827', border: 'none', borderRadius: '8px', fontWeight: 800 },
-  smallBtn: { marginRight: '8px', padding: '6px 10px', cursor: 'pointer', background: '#e5e7eb', color: '#111827', border: 'none', borderRadius: '4px' },
-  dangerBtn: { padding: '6px 10px', cursor: 'pointer', background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '4px' },
-  chipGrid: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '12px' },
-  chip: { display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '8px 10px', borderRadius: '999px', background: '#eef2ff', color: '#1e3a8a', fontWeight: 700 },
-  list: { margin: '12px 0 0', paddingLeft: '18px' },
 };
 
 export default ManageUsers;

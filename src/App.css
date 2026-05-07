@@ -659,14 +659,17 @@ textarea:focus-visible {
 
 .app-shell {
   display: flex;
-  min-height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   width: 100%;
+  overflow: hidden;
   background: #e6ebf2;
 }
 
 .app-main {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: #e6ebf2;
@@ -675,9 +678,10 @@ textarea:focus-visible {
 .sidebar {
   width: 172px;
   min-width: 172px;
-  height: 100vh;
-  padding: 24px 20px;
-  gap: 18px;
+  height: 100dvh;
+  overflow-y: auto;
+  padding: clamp(18px, 2.2vh, 24px) 20px;
+  gap: clamp(12px, 1.8vh, 18px);
   background: #3f69ef;
   color: #ffffff;
 }
@@ -817,6 +821,85 @@ textarea:focus-visible {
   pointer-events: none;
 }
 
+.topbar-search-results {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  width: min(360px, calc(100vw - 44px));
+  max-height: 330px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid #d7dce4;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.16);
+  box-sizing: border-box;
+}
+
+.topbar-search-result {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 3px 10px;
+  width: 100%;
+  padding: 10px 11px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #050505;
+  cursor: pointer;
+  text-align: left;
+}
+
+.topbar-search-result:hover,
+.topbar-search-result:focus-visible {
+  background: #eef2ff;
+}
+
+.topbar-search-result span {
+  grid-row: span 2;
+  align-self: center;
+  display: inline-flex;
+  justify-content: center;
+  min-width: 50px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #e6ebf2;
+  color: #1957ff;
+  font-size: 8px;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.topbar-search-result strong {
+  overflow: hidden;
+  color: #050505;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-search-result small {
+  overflow: hidden;
+  color: #777d86;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-search-empty {
+  margin: 0;
+  padding: 12px;
+  color: #777d86;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .topbar svg {
   width: 100%;
   height: 100%;
@@ -846,7 +929,9 @@ textarea:focus-visible {
 @media (max-width: 720px) {
   .app-shell {
     flex-direction: column;
-    min-height: 100vh;
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
   }
 
   .sidebar {

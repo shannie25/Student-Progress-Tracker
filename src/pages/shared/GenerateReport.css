@@ -143,6 +143,11 @@
   box-sizing: border-box;
 }
 
+.report-filter-card select:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
 .report-filter-card button {
   width: 100%;
   min-height: 53px;
@@ -251,31 +256,45 @@
 }
 
 .distribution-track {
+  position: relative;
   height: 30px;
   overflow: hidden;
   border-radius: 999px;
   background: #b9bccd;
 }
 
-.distribution-track div {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  height: 100%;
-  padding-right: 10px;
+.distribution-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  min-width: 24px;
   border-radius: 999px;
   background: #314f70;
-  color: #ffffff;
-  font-size: 8px;
-  font-weight: 900;
   box-sizing: border-box;
-  white-space: nowrap;
 }
 
-.distribution-track div.danger {
-  justify-content: center;
-  padding-right: 0;
+.distribution-fill.danger {
   background: #ee1d2f;
+}
+
+.distribution-count {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  min-height: 18px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #062749;
+  font-size: 8px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translateY(-50%);
 }
 
 .grade-registry-card {

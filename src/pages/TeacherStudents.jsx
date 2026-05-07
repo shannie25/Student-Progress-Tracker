@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { formatName } from '../utils/formatName';
@@ -7,6 +7,8 @@ import './TeacherStudents.css';
 const TeacherStudents = () => {
   const navigate = useNavigate();
   const { users, grades } = useAuth();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [studentGroup, setStudentGroup] = useState('Assigned');
   const assignedStudents = users.filter((user) => user.role === 'student');
   const students = assignedStudents.map((student) => {
         const studentGrades = grades.filter((grade) => grade.studentId === student.id);
@@ -22,6 +24,19 @@ const TeacherStudents = () => {
           status: averageScore && averageScore < 75 ? 'At Risk' : 'Passing',
         };
       });
+  const filteredStudents = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+
+    return students.filter((student) => {
+      const matchesGroup = studentGroup === 'Assigned' || student.className === studentGroup;
+      const matchesSearch = !normalizedQuery
+        || [student.name, formatName(student.name), student.id, student.className, student.score, student.status]
+          .some((value) => String(value).toLowerCase().includes(normalizedQuery));
+
+      return matchesGroup && matchesSearch;
+    });
+  }, [searchQuery, studentGroup, students]);
+  const hasStudentFilters = Boolean(searchQuery.trim()) || studentGroup !== 'Assigned';
 
   return (
     <div className="teacher-students-page">
@@ -33,20 +48,24 @@ const TeacherStudents = () => {
             <path d="m21 21-4.35-4.35" />
             <circle cx="11" cy="11" r="7" />
           </svg>
-          <input type="text" placeholder="Search students..." aria-label="Search students" />
+          <input
+            type="text"
+            placeholder="Search students..."
+            aria-label="Search students"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
         </label>
 
         <label className="teacher-students-select">
-          <select defaultValue="BSIT -1A" aria-label="Select class">
-            <option>BSIT -1A</option>
-            <option>BSIT -1B</option>
-            <option>BSCS -2A</option>
+          <select value={studentGroup} aria-label="Select student group" onChange={(event) => setStudentGroup(event.target.value)}>
+            <option value="Assigned">Assigned students</option>
           </select>
         </label>
       </div>
 
       <section className="students-cohort-card">
-        <h2>Active cohort: BSIT - 1A</h2>
+        <h2>Active cohort: {studentGroup === 'Assigned' ? 'Assigned students' : studentGroup}</h2>
 
         <table className="students-table">
           <thead>
@@ -59,8 +78,8 @@ const TeacherStudents = () => {
             </tr>
           </thead>
           <tbody>
-            {students.map((student) => (
-              <tr key={student.name}>
+            {filteredStudents.map((student) => (
+              <tr key={student.id}>
                 <td data-label="Student Identity">
                   <span className="students-avatar">{student.name[0]}</span>
                   <span className="students-identity">
@@ -82,16 +101,24 @@ const TeacherStudents = () => {
                 </td>
               </tr>
             ))}
-            {students.length === 0 && (
+            {filteredStudents.length === 0 && (
               <tr>
-                <td colSpan="5">No assigned students yet.</td>
+                <td colSpan="5">{searchQuery.trim() ? 'No students match your search.' : 'No assigned students yet.'}</td>
               </tr>
             )}
           </tbody>
         </table>
 
-        <button type="button" className="students-show-all">
-          Showing assigned students only
+        <button
+          type="button"
+          className="students-show-all"
+          disabled={!hasStudentFilters}
+          onClick={() => {
+            setSearchQuery('');
+            setStudentGroup('Assigned');
+          }}
+        >
+          {hasStudentFilters ? 'Show all assigned students' : `Showing ${filteredStudents.length} of ${students.length} assigned student${students.length === 1 ? '' : 's'}`}
           <span aria-hidden="true">v</span>
         </button>
       </section>

@@ -1,10 +1,11 @@
 import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { formatName } from '../utils/formatName';
 
 const Sidebar = () => {
   const { user, logout } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -27,16 +28,34 @@ const Sidebar = () => {
         .toUpperCase()
     : 'U';
   const displayName = formatName(user?.name) || 'Crist Bland';
+  const roleLabel = user?.role
+    ? user.role.charAt(0).toUpperCase() + user.role.slice(1)
+    : 'ClassID';
 
-  const navItems = [
+  const adminNavItems = [
+    { to: '/dashboard', label: 'Dashboard' },
+    { to: '/manage-users#users', label: 'Users', hash: '#users' },
+    { to: '/manage-users#courses', label: 'Courses', hash: '#courses' },
+    { to: '/generate-report', label: 'Reports' },
+    { to: '/manage-users#grade-scale', label: 'Grade Scale', hash: '#grade-scale' },
+    { to: '/manage-users#audit-logs', label: 'Audit Logs', hash: '#audit-logs' },
+  ];
+  const defaultNavItems = [
     { to: '/dashboard', label: 'Dashboard' },
     { to: '/add-grades', label: user?.role === 'teacher' ? 'Classes' : 'Grades' },
     { to: '/students', label: 'Students', visible: user?.role === 'teacher' },
     { to: '/attendance', label: 'Attendance', visible: user?.role !== 'teacher' },
     { to: '/grades-management', label: 'Grades', visible: user?.role === 'teacher' },
     { to: '/generate-report', label: 'Reports' },
-    { to: '/manage-users', label: 'Manage Users', visible: user?.role === 'admin' },
   ];
+  const navItems = user?.role === 'admin' ? adminNavItems : defaultNavItems;
+  const isNavItemActive = (item, isActive) => {
+    if (item.hash) {
+      return location.pathname === '/manage-users' && location.hash === item.hash;
+    }
+
+    return isActive;
+  };
 
   return (
     <aside className="sidebar">
@@ -48,7 +67,7 @@ const Sidebar = () => {
         <div className="sidebar-avatar">{initials}</div>
         <div>
           <p className="sidebar-name">{displayName}</p>
-          <p className="sidebar-id">ClassID</p>
+          <p className="sidebar-id">{roleLabel}</p>
         </div>
       </div>
 
@@ -59,7 +78,7 @@ const Sidebar = () => {
             <NavLink
               key={item.to}
               to={item.to}
-              className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
+              className={({ isActive }) => `sidebar-link${isNavItemActive(item, isActive) ? ' active' : ''}`}
             >
               {item.label}
             </NavLink>

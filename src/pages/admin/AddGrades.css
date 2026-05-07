@@ -177,6 +177,19 @@
   gap: 12px;
 }
 
+.grades-management-table td[colspan] {
+  display: table-cell;
+  width: auto;
+  height: auto;
+  padding: 24px 28px;
+  color: #050505;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+}
+
 .grades-student-avatar {
   display: grid;
   place-items: center;
@@ -619,6 +632,12 @@
 
   .grades-management-table td:first-child {
     justify-content: flex-start;
+  }
+
+  .grades-management-table td[colspan] {
+    display: block;
+    padding: 18px 20px;
+    text-align: left;
   }
 
   .score-entry-head,

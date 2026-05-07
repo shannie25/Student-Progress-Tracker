@@ -48,6 +48,19 @@ export const createCourse = (course: Course) => {
   return apiPost<Course, Course>('/courses', course);
 };
 
+export const updateCourse = (courseId: number, course: Course) => {
+  return apiRequest<Course>(`/courses/${courseId}`, {
+    method: 'PUT',
+    body: JSON.stringify(course),
+  });
+};
+
+export const deleteCourse = (courseId: number) => {
+  return apiRequest<{ ok: boolean }>(`/courses/${courseId}`, {
+    method: 'DELETE',
+  });
+};
+
 export const getSubjects = () => apiRequest<Subject[]>('/subjects');
 
 export const createSubject = (subject: Subject) => {

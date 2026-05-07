@@ -62,7 +62,7 @@ const AppRoutes = () => {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell app-shell-${user.role}`}>
       <Sidebar />
       <main className="app-main">
         <Topbar />

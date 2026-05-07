@@ -1,10 +1,70 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { StatusMessage } from '../components/ui';
+import { createUser, getAuditLogs, getBackup, getCourses, getTeacherAssignments } from '../services/adminService';
 import { formatName } from '../utils/formatName';
 import './Dashboard.css';
 
+const emptyAdminUserForm = {
+  firstName: '',
+  lastName: '',
+  role: 'student',
+  semester: '1st Semester',
+  schoolYear: '2025-2026',
+};
+
+const getRelativeTimeLabel = (dateValue) => {
+  const date = new Date(dateValue);
+
+  if (Number.isNaN(date.getTime())) {
+    return 'recently';
+  }
+
+  const minutes = Math.max(1, Math.round((Date.now() - date.getTime()) / 60000));
+
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+
+  const hours = Math.round(minutes / 60);
+
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+
+  return `${Math.round(hours / 24)}d ago`;
+};
+
+const formatAuditAction = (action = '') => {
+  return action
+    .toLowerCase()
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
+const loadAdminRequest = async (label, request, fallback) => {
+  try {
+    return { label, data: await request(), failed: false };
+  } catch (error) {
+    return { label, data: fallback, failed: true, message: error instanceof Error ? error.message : 'Request failed' };
+  }
+};
+
 const Dashboard = () => {
-  const { user, grades, users, attendance, classAnalytics } = useAuth();
+  const { user, grades, users, attendance, classAnalytics, reloadData } = useAuth();
+  const navigate = useNavigate();
+  const [adminCourses, setAdminCourses] = useState([]);
+  const [adminAssignments, setAdminAssignments] = useState([]);
+  const [adminAuditLogs, setAdminAuditLogs] = useState([]);
+  const [adminStatusMessage, setAdminStatusMessage] = useState('');
+  const [adminErrorMessage, setAdminErrorMessage] = useState('');
+  const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+  const [adminUserForm, setAdminUserForm] = useState(emptyAdminUserForm);
+  const [addUserError, setAddUserError] = useState('');
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [isBackingUp, setIsBackingUp] = useState(false);
 
   const studentGrades = user.role === 'student'
     ? grades.filter((grade) => grade.studentId === user.id)
@@ -44,6 +104,302 @@ const Dashboard = () => {
   const studentAttendance = attendance.filter((record) => record.studentId === user.id);
   const presentAttendance = studentAttendance.filter((record) => record.status === 'present').length;
   const absentAttendance = studentAttendance.filter((record) => record.status === 'absent').length;
+
+  useEffect(() => {
+    if (user.role !== 'admin') {
+      return undefined;
+    }
+
+    let isMounted = true;
+
+    Promise.all([
+      loadAdminRequest('courses', getCourses, []),
+      loadAdminRequest('teacher assignments', getTeacherAssignments, []),
+      loadAdminRequest('audit logs', getAuditLogs, []),
+    ])
+      .then(([courseResult, assignmentResult, auditResult]) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setAdminCourses(courseResult.data);
+        setAdminAssignments(assignmentResult.data);
+        setAdminAuditLogs(auditResult.data);
+
+        const failedRequests = [courseResult, assignmentResult, auditResult].filter((result) => result.failed);
+
+        if (failedRequests.length > 0) {
+          setAdminErrorMessage(`Could not load admin ${failedRequests.map((result) => result.label).join(', ')}. Restart the server if this is a new database/schema change.`);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setAdminErrorMessage('Some admin dashboard data could not be loaded.');
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user.role]);
+
+  const handleAdminBackup = async () => {
+    try {
+      setIsBackingUp(true);
+      setAdminStatusMessage('');
+      setAdminErrorMessage('');
+
+      const snapshot = await getBackup();
+      const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+
+      link.href = url;
+      link.download = `student-tracker-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setAdminStatusMessage('Backup downloaded successfully.');
+    } catch {
+      setAdminErrorMessage('Backup failed. Please try again from Admin Management.');
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
+
+  const handleAdminUserFormChange = (event) => {
+    const { name, value } = event.target;
+
+    setAdminUserForm((currentForm) => ({
+      ...currentForm,
+      [name]: value,
+    }));
+    setAddUserError('');
+  };
+
+  const handleCloseAddUser = () => {
+    if (isCreatingUser) {
+      return;
+    }
+
+    setIsAddUserOpen(false);
+    setAddUserError('');
+    setAdminUserForm(emptyAdminUserForm);
+  };
+
+  const handleCreateAdminUser = async (event) => {
+    event.preventDefault();
+    const firstName = adminUserForm.firstName.trim();
+    const lastName = adminUserForm.lastName.trim();
+
+    if (!firstName || !lastName) {
+      setAddUserError('Enter both first and last name.');
+      return;
+    }
+
+    const rolePrefix = adminUserForm.role === 'teacher' ? 'T' : adminUserForm.role === 'admin' ? 'A' : 'S';
+    const generatedId = `${rolePrefix}${Date.now().toString().slice(-6)}`;
+    const emailName = `${firstName}.${lastName}`.toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/(^\.|\.$)/g, '');
+    const generatedEmail = `${emailName}.${generatedId.toLowerCase()}@school.com`;
+    const temporaryPassword = `${adminUserForm.role.charAt(0).toUpperCase()}${adminUserForm.role.slice(1)}@123`;
+
+    try {
+      setIsCreatingUser(true);
+      setAddUserError('');
+      setAdminStatusMessage('');
+      setAdminErrorMessage('');
+
+      await createUser({
+        id: generatedId,
+        name: `${firstName} ${lastName}`,
+        email: generatedEmail,
+        role: adminUserForm.role,
+        password: temporaryPassword,
+      });
+      await reloadData();
+      setAdminStatusMessage(`User created. ID: ${generatedId} | Email: ${generatedEmail} | Temporary password: ${temporaryPassword}`);
+      setIsAddUserOpen(false);
+      setAdminUserForm(emptyAdminUserForm);
+    } catch (error) {
+      setAddUserError(error instanceof Error ? error.message : 'We could not create this user.');
+    } finally {
+      setIsCreatingUser(false);
+    }
+  };
+
+  if (user.role === 'admin') {
+    const activeStudents = users.filter((currentUser) => currentUser.role === 'student').length;
+    const facultyMembers = users.filter((currentUser) => currentUser.role === 'teacher').length;
+    const liveCourses = adminCourses.length || new Set(grades.map((grade) => grade.subject).filter(Boolean)).size;
+    const activeClasses = adminAssignments.length;
+    const statCards = [
+      {
+        label: 'Active Students',
+        value: activeStudents,
+        icon: (
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
+        ),
+      },
+      {
+        label: 'Faculty Members',
+        value: facultyMembers,
+        icon: (
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M22 10 12 5 2 10l10 5 10-5Z" />
+            <path d="M6 12v5c3.5 2 8.5 2 12 0v-5" />
+          </svg>
+        ),
+      },
+      {
+        label: 'Live Courses',
+        value: liveCourses,
+        icon: (
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="4" y="3" width="16" height="18" rx="2" />
+            <path d="M8 7h8M8 11h8M8 15h5" />
+          </svg>
+        ),
+      },
+      {
+        label: 'Active Classes',
+        value: activeClasses,
+        icon: (
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
+        ),
+      },
+    ];
+    const recentActivity = adminAuditLogs.slice(0, 3).map((log) => ({
+      id: log.id,
+      title: formatAuditAction(log.action),
+      detail: `${log.tableName} record ${log.recordId}`,
+      time: getRelativeTimeLabel(log.changedAt),
+    }));
+    const visibleActivity = recentActivity.length
+      ? recentActivity
+      : [{ id: 'empty', title: 'No recent activity yet', detail: 'Admin actions will appear here.', time: 'now' }];
+
+    return (
+      <div className="dashboard-container admin-dashboard">
+        <div className="admin-dashboard-header">
+          <h1>Welcome, Admin</h1>
+        </div>
+
+        {adminStatusMessage && <StatusMessage variant="success" className="admin-dashboard-message">{adminStatusMessage}</StatusMessage>}
+        {adminErrorMessage && <StatusMessage variant="error" className="admin-dashboard-message">{adminErrorMessage}</StatusMessage>}
+
+        <div className="admin-stats-grid">
+          {statCards.map((card) => (
+            <section className="admin-stat-card" key={card.label}>
+              <span className="admin-stat-icon">{card.icon}</span>
+              <strong>{card.value}</strong>
+              <small>{card.label}</small>
+            </section>
+          ))}
+        </div>
+
+        <div className="admin-dashboard-grid">
+          <section className="admin-activity-card">
+            <div className="admin-card-header">
+              <h2>Recent Activity</h2>
+              <button type="button" onClick={() => navigate('/manage-users#audit-logs')}>View All</button>
+            </div>
+
+            <div className="admin-activity-list">
+              {visibleActivity.map((activity) => (
+                <article key={activity.id} className="admin-activity-item">
+                  <span className="admin-activity-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                      <path d="M12 8v5l3 2" />
+                      <circle cx="12" cy="12" r="9" />
+                    </svg>
+                  </span>
+                  <span>
+                    <strong>{activity.title}</strong>
+                    <small>{activity.detail}</small>
+                  </span>
+                  <em>{activity.time}</em>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="admin-actions-card">
+            <h2>Quick Actions</h2>
+            <button type="button" className="admin-action-primary" onClick={() => setIsAddUserOpen(true)}>+ Add User</button>
+            <button type="button" onClick={() => navigate('/manage-users#courses')}>+ Create Course</button>
+            <button type="button" className="admin-action-ghost" onClick={handleAdminBackup} disabled={isBackingUp}>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3v12" />
+                <path d="m7 10 5 5 5-5" />
+                <path d="M5 21h14" />
+              </svg>
+              {isBackingUp ? 'Backing Up...' : 'Backup Data'}
+            </button>
+          </section>
+        </div>
+
+        {isAddUserOpen && (
+          <div className="admin-modal-overlay" role="presentation">
+            <form className="admin-add-user-modal" onSubmit={handleCreateAdminUser} role="dialog" aria-modal="true" aria-labelledby="admin-add-user-title" aria-busy={isCreatingUser}>
+              <span className="admin-modal-icon" aria-hidden="true" />
+              <h2 id="admin-add-user-title">Add User</h2>
+
+              {addUserError && <StatusMessage variant="error" className="admin-modal-message">{addUserError}</StatusMessage>}
+
+              <label>
+                <span>First Name</span>
+                <input name="firstName" value={adminUserForm.firstName} onChange={handleAdminUserFormChange} placeholder="e.g. Jer Erick" required />
+              </label>
+
+              <label>
+                <span>Last Name</span>
+                <input name="lastName" value={adminUserForm.lastName} onChange={handleAdminUserFormChange} placeholder="e.g. Dumalagan" required />
+              </label>
+
+              <label>
+                <span>Role</span>
+                <select name="role" value={adminUserForm.role} onChange={handleAdminUserFormChange}>
+                  <option value="student">Student</option>
+                  <option value="teacher">Teacher</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </label>
+
+              <div className="admin-modal-two-column">
+                <label>
+                  <span>Semester</span>
+                  <select name="semester" value={adminUserForm.semester} onChange={handleAdminUserFormChange}>
+                    <option>1st Semester</option>
+                    <option>2nd Semester</option>
+                    <option>Summer</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>School Year</span>
+                  <input name="schoolYear" value={adminUserForm.schoolYear} onChange={handleAdminUserFormChange} placeholder="2025-2026" />
+                </label>
+              </div>
+
+              <button type="submit" className="admin-modal-submit" disabled={isCreatingUser}>
+                {isCreatingUser ? 'Adding User...' : 'Add New User'}
+              </button>
+              <button type="button" className="admin-modal-cancel" onClick={handleCloseAddUser} disabled={isCreatingUser}>
+                Cancel
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (user.role === 'teacher') {
     const teacherName = formatName(user?.name) || 'Prof. Reyes';

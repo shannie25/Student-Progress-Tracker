@@ -27,8 +27,20 @@ const GenerateReport = () => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [selectedSubject, setSelectedSubject] = useState('All');
+  const [selectedSemester, setSelectedSemester] = useState('All');
+  const [selectedReportType, setSelectedReportType] = useState('Class Summary');
   const isStudentReport = user.role === 'student';
-  const reportGrades = isStudentReport ? grades.filter((grade) => grade.studentId === user.id) : grades;
+  const reportBaseGrades = isStudentReport ? grades.filter((grade) => grade.studentId === user.id) : grades;
+  const subjectOptions = [...new Set(reportBaseGrades.map((grade) => grade.subject).filter(Boolean))].sort();
+  const semesterOptions = [...new Set(reportBaseGrades.map((grade) => grade.semester || '1st Semester'))].sort();
+  const reportGrades = reportBaseGrades.filter((grade) => {
+    const gradeSubject = grade.subject || '';
+    const gradeSemester = grade.semester || '1st Semester';
+
+    return (selectedSubject === 'All' || gradeSubject === selectedSubject)
+      && (selectedSemester === 'All' || gradeSemester === selectedSemester);
+  });
   const averageScore = getAverageScore(reportGrades);
   const totalStudents = isStudentReport
     ? 1
@@ -72,6 +84,7 @@ const GenerateReport = () => {
     grade,
     count,
     width: `${Math.max((count / maxDistribution) * 100, count ? 16 : 4)}%`,
+    label: `${count} ${count === 1 ? 'Student' : 'Students'}`,
     danger: grade === 'F',
   }));
   const topPerformers = studentAverages.slice(0, 2);
@@ -84,6 +97,19 @@ const GenerateReport = () => {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleGenerateReport = () => {
+    setErrorMessage('');
+    setStatusMessage(`${selectedReportType} updated with ${reportGrades.length} grade record${reportGrades.length === 1 ? '' : 's'}.`);
+  };
+
+  const handleClearReportFilters = () => {
+    setSelectedSubject('All');
+    setSelectedSemester('All');
+    setSelectedReportType('Class Summary');
+    setErrorMessage('');
+    setStatusMessage('Showing all available report records.');
   };
 
   const handleDownloadPDF = async () => {
@@ -197,40 +223,41 @@ const GenerateReport = () => {
 
           <label>
             <span>Class</span>
-            <select defaultValue="BSIT - 1A">
-              <option>BSIT - 1A</option>
-              <option>BSIT - 1B</option>
-              <option>BSCS - 2A</option>
+            <select value="All" disabled aria-label="Class filter unavailable">
+              <option value="All">All classes</option>
             </select>
           </label>
 
           <label>
             <span>Subject</span>
-            <select defaultValue="Mathematics">
-              <option>Mathematics</option>
-              <option>English</option>
-              <option>Science</option>
+            <select value={selectedSubject} onChange={(event) => setSelectedSubject(event.target.value)}>
+              <option value="All">All subjects</option>
+              {subjectOptions.map((subject) => (
+                <option value={subject} key={subject}>{subject}</option>
+              ))}
             </select>
           </label>
 
           <label>
             <span>Semester</span>
-            <select defaultValue="1st Semester">
-              <option>1st Semester</option>
-              <option>2nd Semester</option>
+            <select value={selectedSemester} onChange={(event) => setSelectedSemester(event.target.value)}>
+              <option value="All">All semesters</option>
+              {semesterOptions.map((semester) => (
+                <option value={semester} key={semester}>{semester}</option>
+              ))}
             </select>
           </label>
 
           <label>
             <span>Report Type</span>
-            <select defaultValue="Class Summary">
+            <select value={selectedReportType} onChange={(event) => setSelectedReportType(event.target.value)}>
               <option>Class Summary</option>
               <option>Grade Registry</option>
               <option>Performance Review</option>
             </select>
           </label>
 
-          <button type="button">
+          <button type="button" onClick={handleGenerateReport}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="m21 21-4.35-4.35" />
               <circle cx="11" cy="11" r="7" />
@@ -261,9 +288,8 @@ const GenerateReport = () => {
               <div className="distribution-row" key={row.grade}>
                 <span>{row.grade}</span>
                 <div className="distribution-track">
-                  <div className={row.danger ? 'danger' : ''} style={{ width: row.width }}>
-                    {row.count} Students
-                  </div>
+                  <div className={`distribution-fill${row.danger ? ' danger' : ''}`} style={{ width: row.width }} aria-hidden="true" />
+                  <span className="distribution-count">{row.label}</span>
                 </div>
               </div>
             ))}
@@ -294,9 +320,14 @@ const GenerateReport = () => {
                     <td className={row.status === 'Warning' ? 'status-warning' : ''}>{row.status}</td>
                   </tr>
                 ))}
+                {registryRows.length === 0 && (
+                  <tr>
+                    <td colSpan="5">No grade records match the selected filters.</td>
+                  </tr>
+                )}
               </tbody>
             </table>
-            {!isStudentReport && <button type="button">View All {totalStudents} Students</button>}
+            {!isStudentReport && <button type="button" onClick={handleClearReportFilters}>View All {totalStudents} Students</button>}
           </section>
         </main>
 
