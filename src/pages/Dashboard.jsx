@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { StatusMessage } from '../components/ui';
-import { createUser, getAuditLogs, getBackup, getCourses, getTeacherAssignments } from '../services/adminService';
+import { createCourse, createUser, getAuditLogs, getBackup, getCourses, getTeacherAssignments } from '../services/adminService';
 import { formatName } from '../utils/formatName';
 import './Dashboard.css';
 
@@ -12,6 +12,16 @@ const emptyAdminUserForm = {
   role: 'student',
   semester: '1st Semester',
   schoolYear: '2025-2026',
+};
+
+const emptyAdminCourseForm = {
+  name: '',
+  code: '',
+  description: '',
+  schedule: '',
+  semester: '1st Semester',
+  schoolYear: '2025-2026',
+  teacherId: '',
 };
 
 const getRelativeTimeLabel = (dateValue) => {
@@ -53,7 +63,7 @@ const loadAdminRequest = async (label, request, fallback) => {
 };
 
 const Dashboard = () => {
-  const { user, grades, users, attendance, classAnalytics, reloadData } = useAuth();
+  const { user, grades, users, attendance, teacherAssignments, classAnalytics, reloadData } = useAuth();
   const navigate = useNavigate();
   const [adminCourses, setAdminCourses] = useState([]);
   const [adminAssignments, setAdminAssignments] = useState([]);
@@ -61,25 +71,45 @@ const Dashboard = () => {
   const [adminStatusMessage, setAdminStatusMessage] = useState('');
   const [adminErrorMessage, setAdminErrorMessage] = useState('');
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+  const [isCreateCourseOpen, setIsCreateCourseOpen] = useState(false);
   const [adminUserForm, setAdminUserForm] = useState(emptyAdminUserForm);
+  const [adminCourseForm, setAdminCourseForm] = useState(emptyAdminCourseForm);
   const [addUserError, setAddUserError] = useState('');
+  const [addCourseError, setAddCourseError] = useState('');
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [isCreatingCourse, setIsCreatingCourse] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
 
   const studentGrades = user.role === 'student'
     ? grades.filter((grade) => grade.studentId === user.id)
     : grades;
+  const studentAssignments = user.role === 'student'
+    ? teacherAssignments.filter((assignment) => assignment.studentId === user.id)
+    : [];
+  const gradedSubjectKeys = new Set(studentGrades.map((grade) => `${grade.subject}|${grade.schoolYear || ''}|${grade.semester || ''}`));
+  const assignedSubjectRows = studentAssignments
+    .filter((assignment) => !gradedSubjectKeys.has(`${assignment.subject}|${assignment.schoolYear || ''}|${assignment.semester || ''}`))
+    .map((assignment) => ({
+      id: `assignment-${assignment.id || `${assignment.teacherId}-${assignment.subject}`}`,
+      subject: assignment.subject,
+      professor: users.find((currentUser) => currentUser.id === assignment.teacherId)?.name || assignment.teacherId,
+      score: null,
+      feedback: 'Not graded yet',
+      schoolYear: assignment.schoolYear,
+      semester: assignment.semester,
+      isAssignedOnly: true,
+    }));
 
-  const displayGrades = studentGrades;
+  const displayGrades = [...studentGrades, ...assignedSubjectRows];
 
   const calculateGPA = () => {
-    if (displayGrades.length === 0) return '0.0';
+    if (studentGrades.length === 0) return '0.0';
 
-    const averageScore = displayGrades.reduce((total, grade) => total + (grade.score || 0), 0) / displayGrades.length;
+    const averageScore = studentGrades.reduce((total, grade) => total + (grade.score || 0), 0) / studentGrades.length;
     return (averageScore / 25).toFixed(1);
   };
 
-  const getUniqueSubjects = () => new Set(displayGrades.map((grade) => grade.subject)).size;
+  const getUniqueSubjects = () => new Set([...studentGrades.map((grade) => grade.subject), ...studentAssignments.map((assignment) => assignment.subject)]).size;
 
   const getLetterGrade = (score = 0) => {
     if (score >= 90) return 'A';
@@ -176,6 +206,16 @@ const Dashboard = () => {
     setAddUserError('');
   };
 
+  const handleAdminCourseFormChange = (event) => {
+    const { name, value } = event.target;
+
+    setAdminCourseForm((currentForm) => ({
+      ...currentForm,
+      [name]: value,
+    }));
+    setAddCourseError('');
+  };
+
   const handleCloseAddUser = () => {
     if (isCreatingUser) {
       return;
@@ -184,6 +224,16 @@ const Dashboard = () => {
     setIsAddUserOpen(false);
     setAddUserError('');
     setAdminUserForm(emptyAdminUserForm);
+  };
+
+  const handleCloseCreateCourse = () => {
+    if (isCreatingCourse) {
+      return;
+    }
+
+    setIsCreateCourseOpen(false);
+    setAddCourseError('');
+    setAdminCourseForm(emptyAdminCourseForm);
   };
 
   const handleCreateAdminUser = async (event) => {
@@ -223,6 +273,32 @@ const Dashboard = () => {
       setAddUserError(error instanceof Error ? error.message : 'We could not create this user.');
     } finally {
       setIsCreatingUser(false);
+    }
+  };
+
+  const handleCreateAdminCourse = async (event) => {
+    event.preventDefault();
+
+    if (!adminCourseForm.name.trim() || !adminCourseForm.code.trim()) {
+      setAddCourseError('Enter both course name and course code.');
+      return;
+    }
+
+    try {
+      setIsCreatingCourse(true);
+      setAddCourseError('');
+      setAdminStatusMessage('');
+      setAdminErrorMessage('');
+
+      const savedCourse = await createCourse(adminCourseForm);
+      setAdminCourses((currentCourses) => [...currentCourses, savedCourse]);
+      setAdminStatusMessage(`Course created: ${savedCourse.code} - ${savedCourse.name}`);
+      setIsCreateCourseOpen(false);
+      setAdminCourseForm(emptyAdminCourseForm);
+    } catch (error) {
+      setAddCourseError(error instanceof Error ? error.message : 'We could not create this course.');
+    } finally {
+      setIsCreatingCourse(false);
     }
   };
 
@@ -333,7 +409,7 @@ const Dashboard = () => {
           <section className="admin-actions-card">
             <h2>Quick Actions</h2>
             <button type="button" className="admin-action-primary" onClick={() => setIsAddUserOpen(true)}>+ Add User</button>
-            <button type="button" onClick={() => navigate('/manage-users#courses')}>+ Create Course</button>
+            <button type="button" onClick={() => setIsCreateCourseOpen(true)}>+ Create Course</button>
             <button type="button" className="admin-action-ghost" onClick={handleAdminBackup} disabled={isBackingUp}>
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 3v12" />
@@ -392,6 +468,60 @@ const Dashboard = () => {
                 {isCreatingUser ? 'Adding User...' : 'Add New User'}
               </button>
               <button type="button" className="admin-modal-cancel" onClick={handleCloseAddUser} disabled={isCreatingUser}>
+                Cancel
+              </button>
+            </form>
+          </div>
+        )}
+
+        {isCreateCourseOpen && (
+          <div className="admin-modal-overlay" role="presentation">
+            <form className="admin-add-user-modal admin-course-modal" onSubmit={handleCreateAdminCourse} role="dialog" aria-modal="true" aria-labelledby="admin-create-course-title" aria-busy={isCreatingCourse}>
+              <span className="admin-modal-icon" aria-hidden="true" />
+              <h2 id="admin-create-course-title">Create Course</h2>
+
+              {addCourseError && <StatusMessage variant="error" className="admin-modal-message">{addCourseError}</StatusMessage>}
+
+              <label>
+                <span>Course Name</span>
+                <input name="name" value={adminCourseForm.name} onChange={handleAdminCourseFormChange} placeholder="e.g., Information Technology Fundamentals" required />
+              </label>
+
+              <label>
+                <span>Course Code</span>
+                <input name="code" value={adminCourseForm.code} onChange={handleAdminCourseFormChange} placeholder="e.g. IT1070" required />
+              </label>
+
+              <label>
+                <span>Department</span>
+                <input name="description" value={adminCourseForm.description} onChange={handleAdminCourseFormChange} placeholder="e.g., Comp. Science" />
+              </label>
+
+              <label>
+                <span>Schedule</span>
+                <input name="schedule" value={adminCourseForm.schedule} onChange={handleAdminCourseFormChange} placeholder="e.g., MWF 9:00 AM" />
+              </label>
+
+              <div className="admin-modal-two-column">
+                <label>
+                  <span>Semester</span>
+                  <select name="semester" value={adminCourseForm.semester} onChange={handleAdminCourseFormChange}>
+                    <option>1st Semester</option>
+                    <option>2nd Semester</option>
+                    <option>Summer</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>School Year</span>
+                  <input name="schoolYear" value={adminCourseForm.schoolYear} onChange={handleAdminCourseFormChange} placeholder="2025-2026" />
+                </label>
+              </div>
+
+              <button type="submit" className="admin-modal-submit" disabled={isCreatingCourse}>
+                {isCreatingCourse ? 'Adding Course...' : 'Add Course'}
+              </button>
+              <button type="button" className="admin-modal-cancel" onClick={handleCloseCreateCourse} disabled={isCreatingCourse}>
                 Cancel
               </button>
             </form>
@@ -612,7 +742,9 @@ const Dashboard = () => {
                         {grade.professor && <div className="professor-name">{grade.professor}</div>}
                       </td>
                       <td data-label="Score">
-                        <span className="score-badge">{getLetterGrade(grade.score)} ({grade.score}%)</span>
+                        <span className="score-badge">
+                          {grade.isAssignedOnly ? 'Not graded yet' : `${getLetterGrade(grade.score)} (${grade.score}%)`}
+                        </span>
                       </td>
                       <td className="feedback-cell" data-label="Feedback">{grade.feedback || 'No feedback'}</td>
                       <td data-label="Action"><button type="button" className="view-link">View</button></td>

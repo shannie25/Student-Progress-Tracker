@@ -3,7 +3,8 @@ import { createGrade, getGrades, updateGrade } from '../services/gradeService';
 import { getUsers } from '../services/userService';
 import { getAttendance } from '../services/attendanceService';
 import { getSession, loginUser, logoutUser, registerUser, requestPasswordReset as requestPasswordResetService } from '../services/authService';
-import type { AppUser, AttendanceRecord, ClassAnalytics, Grade, GradePayload, GradeUpdatePayload, RegistrationPayload, UserRole } from '../types';
+import { getTeacherAssignments } from '../services/adminService';
+import type { AppUser, AttendanceRecord, ClassAnalytics, Grade, GradePayload, GradeUpdatePayload, RegistrationPayload, TeacherAssignment, UserRole } from '../types';
 import { AuthContext } from './authContext';
 import { apiRequest } from '../services/apiClient';
 
@@ -24,6 +25,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [grades, setGrades] = useState<Grade[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [teacherAssignments, setTeacherAssignments] = useState<TeacherAssignment[]>([]);
   const [classAnalytics, setClassAnalytics] = useState<ClassAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -39,16 +41,18 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       const analyticsRequest = sessionUser.role === 'student'
         ? Promise.resolve(null)
         : apiRequest<ClassAnalytics>('/analytics/class').catch(() => null);
-      const [usersData, gradesData, attendanceData, analyticsData] = await Promise.all([
+      const [usersData, gradesData, attendanceData, assignmentData, analyticsData] = await Promise.all([
         getUsers(),
         getGrades(),
         getAttendance(),
+        getTeacherAssignments().catch(() => []),
         analyticsRequest,
       ]);
 
       setUsers(usersData);
       setGrades(gradesData);
       setAttendance(attendanceData);
+      setTeacherAssignments(assignmentData);
       setClassAnalytics(analyticsData);
     } catch (err) {
       setError(isUnauthorizedSession(err) ? '' : getErrorMessage(err, 'Unable to connect to the server'));
@@ -56,6 +60,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       setUsers([]);
       setGrades([]);
       setAttendance([]);
+      setTeacherAssignments([]);
       setClassAnalytics(null);
     } finally {
       setLoading(false);
@@ -106,11 +111,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     setUser(null);
     setUsers([]);
     setGrades([]);
+    setTeacherAssignments([]);
   };
 
   return (
     <AuthContext.Provider
-      value={{ user, users, grades, attendance, classAnalytics, loading, error, login, logout, addGrade, editGrade, register, requestPasswordReset, reloadData: loadAppData }}
+      value={{ user, users, grades, attendance, teacherAssignments, classAnalytics, loading, error, login, logout, addGrade, editGrade, register, requestPasswordReset, reloadData: loadAppData }}
     >
       {children}
     </AuthContext.Provider>

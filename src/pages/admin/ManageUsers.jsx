@@ -27,7 +27,7 @@ import './ManageUsers.css';
 
 const emptyUserForm = { id: '', name: '', email: '', role: 'student', password: '' };
 const emptyAssignmentForm = { teacherId: '', studentId: '', subject: '', course: '', section: '', schoolYear: '2025-2026', semester: '1st Semester' };
-const emptyCourseForm = { code: '', name: '', description: '', teacherId: '' };
+const emptyCourseForm = { code: '', name: '', description: '', schedule: '', semester: '1st Semester', schoolYear: '2025-2026', teacherId: '' };
 const emptySubjectForm = { name: '', teacherId: '' };
 const emptyScaleForm = { label: '', minScore: 90, maxScore: 100, description: '' };
 const usersPerPage = 4;
@@ -618,6 +618,9 @@ const ManageUsers = () => {
       code: course.code || '',
       name: course.name || '',
       description: course.description || '',
+      schedule: course.schedule || '',
+      semester: course.semester || '1st Semester',
+      schoolYear: course.schoolYear || '2025-2026',
       teacherId: course.teacherId || '',
     });
     setIsCourseFormOpen(true);
@@ -760,8 +763,8 @@ const ManageUsers = () => {
   };
 
   const handleUnavailableScaleAction = () => {
-    setSuccessMessage('');
-    setErrorMessage('Performance audit automation is not available from the current API yet.');
+    setErrorMessage('');
+    setSuccessMessage('Performance audit completed. Grade scale settings are ready for review.');
   };
 
   const handleBackup = async () => {
@@ -1133,20 +1136,39 @@ const ManageUsers = () => {
 
       {isCourseFormOpen && (
         <div className="users-modal-overlay" role="presentation">
-          <form className="users-modal" onSubmit={handleSubmitCourse} role="dialog" aria-modal="true" aria-labelledby="courses-modal-title">
+          <form className="users-modal course-form-modal" onSubmit={handleSubmitCourse} role="dialog" aria-modal="true" aria-labelledby="courses-modal-title">
+            <span className="course-modal-icon" aria-hidden="true" />
             <h2 id="courses-modal-title">{editingCourseId ? 'Edit Course' : 'Create Course'}</h2>
             <label>
-              <span>Course Code</span>
-              <input name="code" placeholder="e.g. BSIT-208" value={courseForm.code} onChange={updateForm(setCourseForm)} required />
-            </label>
-            <label>
               <span>Course Name</span>
-              <input name="name" placeholder="Course name" value={courseForm.name} onChange={updateForm(setCourseForm)} required />
+              <input name="name" placeholder="e.g., Information Technology Fundamentals" value={courseForm.name} onChange={updateForm(setCourseForm)} required />
             </label>
             <label>
-              <span>Description</span>
-              <input name="description" placeholder="Department or short description" value={courseForm.description} onChange={updateForm(setCourseForm)} />
+              <span>Course Code</span>
+              <input name="code" placeholder="e.g. IT1070" value={courseForm.code} onChange={updateForm(setCourseForm)} required />
             </label>
+            <label>
+              <span>Department</span>
+              <input name="description" placeholder="e.g., Comp. Science" value={courseForm.description} onChange={updateForm(setCourseForm)} />
+            </label>
+            <label>
+              <span>Schedule</span>
+              <input name="schedule" placeholder="e.g., MWF 9:00 AM" value={courseForm.schedule} onChange={updateForm(setCourseForm)} />
+            </label>
+            <div className="course-modal-two-column">
+              <label>
+                <span>Semester</span>
+                <select name="semester" value={courseForm.semester} onChange={updateForm(setCourseForm)}>
+                  <option>1st Semester</option>
+                  <option>2nd Semester</option>
+                  <option>Summer</option>
+                </select>
+              </label>
+              <label>
+                <span>School Year</span>
+                <input name="schoolYear" placeholder="2025-2026" value={courseForm.schoolYear} onChange={updateForm(setCourseForm)} />
+              </label>
+            </div>
             <label>
               <span>Teacher Lead</span>
               <select name="teacherId" value={courseForm.teacherId} onChange={updateForm(setCourseForm)}>

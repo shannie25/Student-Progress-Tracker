@@ -392,11 +392,20 @@ const ensureApplicationSchema = async () => {
       code VARCHAR(40) NOT NULL,
       name VARCHAR(120) NOT NULL,
       description VARCHAR(255) DEFAULT '',
+      schedule VARCHAR(120) DEFAULT '',
+      school_year VARCHAR(20) NOT NULL DEFAULT '2025-2026',
+      semester VARCHAR(40) NOT NULL DEFAULT '1st Semester',
       teacher_id VARCHAR(40) NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE KEY unique_course_code (code)
     ) ENGINE=InnoDB
   `);
+
+  if (await tableExists("courses")) {
+    await ensureColumn("courses", "schedule", "VARCHAR(120) DEFAULT ''");
+    await ensureColumn("courses", "school_year", "VARCHAR(20) NOT NULL DEFAULT '2025-2026'");
+    await ensureColumn("courses", "semester", "VARCHAR(40) NOT NULL DEFAULT '1st Semester'");
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS grade_scales (
@@ -1261,12 +1270,18 @@ app.post("/api/users/:id/reset-password", requireAuth, requireRole("admin"), asy
   }
 });
 
-app.get("/api/teacher-assignments", requireAuth, requireRole("admin", "teacher"), async (req, res) => {
+app.get("/api/teacher-assignments", requireAuth, requireRole("admin", "teacher", "student"), async (req, res) => {
   try {
     const params = [];
-    const roleFilter = req.user.role === "teacher" ? "WHERE teacher_id = ?" : "";
+    let roleFilter = "";
 
     if (req.user.role === "teacher") {
+      roleFilter = "WHERE teacher_id = ?";
+      params.push(req.user.id);
+    }
+
+    if (req.user.role === "student") {
+      roleFilter = "WHERE student_id = ?";
       params.push(req.user.id);
     }
 
@@ -1332,7 +1347,7 @@ app.delete("/api/teacher-assignments/:id", requireAuth, requireRole("admin"), as
 
 app.get("/api/courses", requireAuth, async (_req, res) => {
   try {
-    const [rows] = await pool.query("SELECT id, code, name, description, teacher_id AS teacherId FROM courses ORDER BY name ASC");
+    const [rows] = await pool.query("SELECT id, code, name, description, schedule, school_year AS schoolYear, semester, teacher_id AS teacherId FROM courses ORDER BY name ASC");
     res.json(rows);
   } catch (error) {
     safeLogError("Failed to fetch courses", error);
@@ -1344,6 +1359,9 @@ app.post("/api/courses", requireAuth, requireRole("admin"), async (req, res) => 
   const code = sanitizeText(req.body.code, 40).toUpperCase();
   const name = sanitizeText(req.body.name, 120);
   const description = sanitizeText(req.body.description, 255);
+  const schedule = sanitizeText(req.body.schedule, 120);
+  const schoolYear = normalizeSchoolYear(req.body.schoolYear);
+  const semester = normalizeSemester(req.body.semester);
   const teacherId = normalizeIdentifier(req.body.teacherId);
 
   if (!code || !name) {
@@ -1352,10 +1370,10 @@ app.post("/api/courses", requireAuth, requireRole("admin"), async (req, res) => 
 
   try {
     const [result] = await pool.query(
-      "INSERT INTO courses (code, name, description, teacher_id) VALUES (?, ?, ?, ?)",
-      [code, name, description, teacherId || null]
+      "INSERT INTO courses (code, name, description, schedule, school_year, semester, teacher_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [code, name, description, schedule, schoolYear, semester, teacherId || null]
     );
-    const course = { id: result.insertId, code, name, description, teacherId: teacherId || null };
+    const course = { id: result.insertId, code, name, description, schedule, schoolYear, semester, teacherId: teacherId || null };
     await writeAuditLog(req, "INSERT", "courses", result.insertId, null, course);
     res.status(201).json(course);
   } catch (error) {
@@ -1369,6 +1387,9 @@ app.put("/api/courses/:id", requireAuth, requireRole("admin"), async (req, res) 
   const code = sanitizeText(req.body.code, 40).toUpperCase();
   const name = sanitizeText(req.body.name, 120);
   const description = sanitizeText(req.body.description, 255);
+  const schedule = sanitizeText(req.body.schedule, 120);
+  const schoolYear = normalizeSchoolYear(req.body.schoolYear);
+  const semester = normalizeSemester(req.body.semester);
   const teacherId = normalizeIdentifier(req.body.teacherId);
 
   if (!Number.isInteger(courseId) || courseId <= 0) {
@@ -1380,18 +1401,18 @@ app.put("/api/courses/:id", requireAuth, requireRole("admin"), async (req, res) 
   }
 
   try {
-    const [existingRows] = await pool.query("SELECT id, code, name, description, teacher_id AS teacherId FROM courses WHERE id = ? LIMIT 1", [courseId]);
+    const [existingRows] = await pool.query("SELECT id, code, name, description, schedule, school_year AS schoolYear, semester, teacher_id AS teacherId FROM courses WHERE id = ? LIMIT 1", [courseId]);
 
     if (existingRows.length === 0) {
       return res.status(404).json({ message: "Course not found" });
     }
 
     await pool.query(
-      "UPDATE courses SET code = ?, name = ?, description = ?, teacher_id = ? WHERE id = ?",
-      [code, name, description, teacherId || null, courseId]
+      "UPDATE courses SET code = ?, name = ?, description = ?, schedule = ?, school_year = ?, semester = ?, teacher_id = ? WHERE id = ?",
+      [code, name, description, schedule, schoolYear, semester, teacherId || null, courseId]
     );
 
-    const course = { id: courseId, code, name, description, teacherId: teacherId || null };
+    const course = { id: courseId, code, name, description, schedule, schoolYear, semester, teacherId: teacherId || null };
     await writeAuditLog(req, "UPDATE", "courses", courseId, existingRows[0], course);
     res.json(course);
   } catch (error) {
@@ -1412,7 +1433,7 @@ app.delete("/api/courses/:id", requireAuth, requireRole("admin"), async (req, re
   }
 
   try {
-    const [existingRows] = await pool.query("SELECT id, code, name, description, teacher_id AS teacherId FROM courses WHERE id = ? LIMIT 1", [courseId]);
+    const [existingRows] = await pool.query("SELECT id, code, name, description, schedule, school_year AS schoolYear, semester, teacher_id AS teacherId FROM courses WHERE id = ? LIMIT 1", [courseId]);
 
     if (existingRows.length === 0) {
       return res.status(404).json({ message: "Course not found" });
@@ -1518,7 +1539,7 @@ app.get("/api/backup", requireAuth, requireRole("admin"), async (_req, res) => {
     const [assignments] = await pool.query(
       "SELECT id, teacher_id AS teacherId, student_id AS studentId, subject, course, section, school_year AS schoolYear, semester FROM teacher_assignments ORDER BY id ASC"
     );
-    const [courses] = await pool.query("SELECT id, code, name, description, teacher_id AS teacherId FROM courses ORDER BY id ASC");
+    const [courses] = await pool.query("SELECT id, code, name, description, schedule, school_year AS schoolYear, semester, teacher_id AS teacherId FROM courses ORDER BY id ASC");
     const [subjects] = await pool.query("SELECT subject_id AS id, subject_name AS name, teacher_id AS teacherId FROM subjects ORDER BY subject_id ASC");
     const [gradeScales] = await pool.query("SELECT id, label, min_score AS minScore, max_score AS maxScore, description FROM grade_scales ORDER BY id ASC");
 
@@ -1577,13 +1598,16 @@ app.post("/api/restore", requireAuth, requireRole("admin"), async (req, res) => 
 
     for (const course of courses) {
       await pool.query(
-        `INSERT INTO courses (code, name, description, teacher_id)
-         VALUES (?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description), teacher_id = VALUES(teacher_id)`,
+        `INSERT INTO courses (code, name, description, schedule, school_year, semester, teacher_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description), schedule = VALUES(schedule), school_year = VALUES(school_year), semester = VALUES(semester), teacher_id = VALUES(teacher_id)`,
         [
           sanitizeText(course.code, 40).toUpperCase(),
           sanitizeText(course.name, 120),
           sanitizeText(course.description, 255),
+          sanitizeText(course.schedule, 120),
+          normalizeSchoolYear(course.schoolYear),
+          normalizeSemester(course.semester),
           normalizeIdentifier(course.teacherId) || null,
         ]
       );

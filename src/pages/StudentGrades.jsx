@@ -20,7 +20,7 @@ const getAverage = (items) => {
 };
 
 const StudentGrades = () => {
-  const { user, grades } = useAuth();
+  const { user, grades, users, teacherAssignments } = useAuth();
   const reportRef = useRef(null);
   const [selectedSchoolYear, setSelectedSchoolYear] = useState('All');
   const [selectedSemester, setSelectedSemester] = useState('All');
@@ -29,8 +29,27 @@ const StudentGrades = () => {
   const [errorMessage, setErrorMessage] = useState('');
 
   const studentGrades = useMemo(() => grades.filter((grade) => grade.studentId === user.id), [grades, user.id]);
-  const schoolYears = [...new Set(studentGrades.map((grade) => grade.schoolYear || '2025-2026'))];
-  const semesters = [...new Set(studentGrades.map((grade) => grade.semester || '1st Semester'))];
+  const studentAssignments = useMemo(() => teacherAssignments.filter((assignment) => assignment.studentId === user.id), [teacherAssignments, user.id]);
+  const assignedRows = useMemo(() => {
+    const gradedSubjectKeys = new Set(studentGrades.map((grade) => `${grade.subject}|${grade.schoolYear || ''}|${grade.semester || ''}`));
+
+    return studentAssignments
+      .filter((assignment) => !gradedSubjectKeys.has(`${assignment.subject}|${assignment.schoolYear || ''}|${assignment.semester || ''}`))
+      .map((assignment) => ({
+        id: `assignment-${assignment.id || `${assignment.teacherId}-${assignment.subject}`}`,
+        subject: assignment.subject,
+        score: null,
+        feedback: 'Not graded yet',
+        teacherName: users.find((currentUser) => currentUser.id === assignment.teacherId)?.name || assignment.teacherId,
+        schoolYear: assignment.schoolYear || '2025-2026',
+        semester: assignment.semester || '1st Semester',
+        term: 'Pending',
+        isAssignedOnly: true,
+      }));
+  }, [studentAssignments, studentGrades, users]);
+  const subjectRows = [...studentGrades, ...assignedRows];
+  const schoolYears = [...new Set(subjectRows.map((row) => row.schoolYear || '2025-2026'))];
+  const semesters = [...new Set(subjectRows.map((row) => row.semester || '1st Semester'))];
   const displayGrades = studentGrades.filter((grade) => {
     const gradeSchoolYear = grade.schoolYear || '2025-2026';
     const gradeSemester = grade.semester || '1st Semester';
@@ -38,10 +57,15 @@ const StudentGrades = () => {
     return (selectedSchoolYear === 'All' || gradeSchoolYear === selectedSchoolYear)
       && (selectedSemester === 'All' || gradeSemester === selectedSemester);
   });
+  const displayAssignedRows = assignedRows.filter((row) => {
+    return (selectedSchoolYear === 'All' || row.schoolYear === selectedSchoolYear)
+      && (selectedSemester === 'All' || row.semester === selectedSemester);
+  });
+  const displayRows = [...displayGrades, ...displayAssignedRows];
   const averageScore = getAverage(displayGrades);
   const cumulativeGpa = displayGrades.length ? (averageScore / 25).toFixed(1) : '0.0';
-  const activeSubjects = new Set(displayGrades.map((grade) => grade.subject)).size;
-  const selectedGrade = displayGrades[0];
+  const activeSubjects = new Set(displayRows.map((row) => row.subject)).size;
+  const selectedGrade = displayRows[0];
   const gradeHistory = Object.values(studentGrades.reduce((groups, grade) => {
     const key = `${grade.schoolYear || '2025-2026'}|${grade.semester || '1st Semester'}|${grade.term || 'All Terms'}`;
     const currentGroup = groups[key] || {
@@ -151,19 +175,19 @@ const StudentGrades = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {displayGrades.map((grade) => (
+                  {displayRows.map((grade) => (
                     <tr key={grade.id}>
                       <td>{grade.subject}</td>
-                      <td>{Number(grade.score).toFixed(1)}</td>
+                      <td>{grade.isAssignedOnly ? 'Not graded yet' : Number(grade.score).toFixed(1)}</td>
                       <td>
-                        <span>{getLetterGrade(Number(grade.score))}</span>
+                        <span>{grade.isAssignedOnly ? 'Pending' : getLetterGrade(Number(grade.score))}</span>
                       </td>
                       <td>{grade.feedback || 'No feedback yet'}</td>
                     </tr>
                   ))}
-                  {displayGrades.length === 0 && (
+                  {displayRows.length === 0 && (
                     <tr>
-                      <td colSpan="4">No grades match the selected term.</td>
+                      <td colSpan="4">No subjects match the selected term.</td>
                     </tr>
                   )}
                 </tbody>
@@ -201,7 +225,7 @@ const StudentGrades = () => {
                 </div>
                 <div>
                   <span>{selectedGrade?.term || 'N/A'}</span>
-                  <strong>{selectedGrade ? `${Number(selectedGrade.score).toFixed(1)}/100` : '--'}</strong>
+                  <strong>{selectedGrade && !selectedGrade.isAssignedOnly ? `${Number(selectedGrade.score).toFixed(1)}/100` : '--'}</strong>
                 </div>
                 <div>
                   <span>Semester</span>

@@ -1031,6 +1031,26 @@
   font-weight: 900;
 }
 
+.course-form-modal {
+  width: min(410px, calc(100vw - 48px));
+  border-radius: 24px;
+  padding: 42px 24px 24px;
+}
+
+.course-form-modal h2 {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.course-modal-icon {
+  display: block;
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 18px;
+  border-radius: 5px;
+  background: #062749;
+}
+
 .users-modal label {
   display: block;
   margin-bottom: 12px;
@@ -1050,6 +1070,18 @@
   width: 100%;
   height: 36px;
   font-size: 10px;
+}
+
+.course-form-modal input,
+.course-form-modal select {
+  height: 36px;
+  background: #f1f1f2;
+}
+
+.course-modal-two-column {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
 }
 
 .users-modal-actions {

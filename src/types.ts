@@ -95,6 +95,9 @@ export type Course = {
   code: string;
   name: string;
   description?: string;
+  schedule?: string;
+  schoolYear?: string;
+  semester?: string;
   teacherId?: string | null;
 };
 

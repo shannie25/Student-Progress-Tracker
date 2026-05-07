@@ -1,11 +1,12 @@
 import { createContext } from 'react';
-import type { AppUser, AttendanceRecord, ClassAnalytics, Grade, GradePayload, GradeUpdatePayload, MessageResponse, RegistrationPayload, UserRole } from '../types';
+import type { AppUser, AttendanceRecord, ClassAnalytics, Grade, GradePayload, GradeUpdatePayload, MessageResponse, RegistrationPayload, TeacherAssignment, UserRole } from '../types';
 
 export type AuthContextValue = {
   user: AppUser | null;
   users: AppUser[];
   grades: Grade[];
   attendance: AttendanceRecord[];
+  teacherAssignments: TeacherAssignment[];
   classAnalytics: ClassAnalytics | null;
   loading: boolean;
   error: string;
