@@ -1513,6 +1513,71 @@ app.post("/api/grade-scales", requireAuth, requireRole("admin"), async (req, res
   }
 });
 
+app.put("/api/grade-scales/:id", requireAuth, requireRole("admin"), async (req, res) => {
+  const scaleId = Number(req.params.id);
+  const label = sanitizeText(req.body.label, 20);
+  const minScore = Number(req.body.minScore);
+  const maxScore = Number(req.body.maxScore);
+  const description = sanitizeText(req.body.description, 255);
+
+  if (!Number.isInteger(scaleId) || scaleId <= 0) {
+    return res.status(400).json({ message: "Valid grade scale ID is required" });
+  }
+
+  if (!label || !Number.isFinite(minScore) || !Number.isFinite(maxScore)) {
+    return res.status(400).json({ message: "Grade label, min score, and max score are required" });
+  }
+
+  try {
+    const [existingRows] = await pool.query(
+      "SELECT id, label, min_score AS minScore, max_score AS maxScore, description FROM grade_scales WHERE id = ?",
+      [scaleId]
+    );
+
+    if (!existingRows.length) {
+      return res.status(404).json({ message: "Grade scale not found" });
+    }
+
+    await pool.query(
+      "UPDATE grade_scales SET label = ?, min_score = ?, max_score = ?, description = ? WHERE id = ?",
+      [label, minScore, maxScore, description, scaleId]
+    );
+
+    const scale = { id: scaleId, label, minScore, maxScore, description };
+    await writeAuditLog(req, "UPDATE", "grade_scales", scaleId, existingRows[0], scale);
+    res.json(scale);
+  } catch (error) {
+    safeLogError("Failed to update grade scale", error);
+    res.status(500).json({ message: "Failed to update grade scale" });
+  }
+});
+
+app.delete("/api/grade-scales/:id", requireAuth, requireRole("admin"), async (req, res) => {
+  const scaleId = Number(req.params.id);
+
+  if (!Number.isInteger(scaleId) || scaleId <= 0) {
+    return res.status(400).json({ message: "Valid grade scale ID is required" });
+  }
+
+  try {
+    const [existingRows] = await pool.query(
+      "SELECT id, label, min_score AS minScore, max_score AS maxScore, description FROM grade_scales WHERE id = ?",
+      [scaleId]
+    );
+
+    if (!existingRows.length) {
+      return res.status(404).json({ message: "Grade scale not found" });
+    }
+
+    await pool.query("DELETE FROM grade_scales WHERE id = ?", [scaleId]);
+    await writeAuditLog(req, "DELETE", "grade_scales", scaleId, existingRows[0], null);
+    res.json({ ok: true });
+  } catch (error) {
+    safeLogError("Failed to delete grade scale", error);
+    res.status(500).json({ message: "Failed to delete grade scale" });
+  }
+});
+
 app.get("/api/audit-logs", requireAuth, requireRole("admin"), async (_req, res) => {
   try {
     const [rows] = await pool.query(

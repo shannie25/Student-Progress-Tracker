@@ -359,6 +359,143 @@
   color: #138cff;
 }
 
+.grades-page {
+  min-height: calc(100dvh - var(--topbar-height, 72px));
+  padding: clamp(30px, 3vw, 52px);
+}
+
+.grades-toolbar {
+  margin-bottom: 32px;
+}
+
+.grades-toolbar h1 {
+  font-size: clamp(32px, 2.7vw, 40px);
+}
+
+.grades-filters {
+  gap: 22px;
+}
+
+.grades-filters span {
+  font-size: 12px;
+}
+
+.grades-filters select {
+  min-width: 180px;
+  height: 56px;
+  border-radius: 12px;
+  font-size: 17px;
+}
+
+.grades-content-grid,
+.grades-main,
+.grades-side,
+.grades-stats {
+  gap: 28px;
+}
+
+.grade-stat-card,
+.grades-table-card,
+.subject-detail-card {
+  border-radius: 18px;
+}
+
+.grade-stat-card {
+  min-height: 150px;
+  padding: 30px 32px;
+}
+
+.grade-stat-card h2 {
+  color: #59616d;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.grade-stat-card p {
+  font-size: clamp(44px, 4vw, 56px);
+}
+
+.grade-stat-card.status-card p {
+  font-size: clamp(30px, 3vw, 40px);
+}
+
+.student-grades-table th,
+.student-grades-table td {
+  padding: 22px 28px;
+}
+
+.student-grades-table th {
+  color: #59616d;
+  font-size: 13px;
+}
+
+.student-grades-table td {
+  color: #111827;
+  font-size: 16px;
+}
+
+.student-grades-table td span {
+  min-width: 44px;
+  height: 28px;
+  font-size: 14px;
+}
+
+.academic-journey h2,
+.subject-detail-card h2 {
+  font-size: 24px;
+}
+
+.journey-list {
+  gap: 18px;
+}
+
+.journey-list article {
+  min-height: 92px;
+  border-radius: 14px;
+  padding: 22px 92px 20px 24px;
+}
+
+.journey-list small,
+.activity-table div:first-child,
+.teacher-note h3 {
+  font-size: 13px;
+}
+
+.journey-list strong,
+.activity-table div,
+.teacher-note p {
+  font-size: 16px;
+}
+
+.journey-list b {
+  right: 22px;
+  font-size: 22px;
+}
+
+.subject-detail-card {
+  padding: 30px 32px;
+}
+
+.activity-table {
+  gap: 18px;
+}
+
+.teacher-note {
+  border-radius: 14px;
+  padding: 24px;
+}
+
+.grades-actions button {
+  min-height: 56px;
+  border-radius: 12px;
+  font-size: 15px;
+}
+
+.grades-actions svg {
+  width: 22px;
+  height: 22px;
+}
+
 @media (max-width: 980px) {
   .grades-page {
     padding: 24px;

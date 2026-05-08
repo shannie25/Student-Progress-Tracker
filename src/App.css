@@ -658,6 +658,8 @@ textarea:focus-visible {
 }
 
 .app-shell {
+  --sidebar-width: 220px;
+  --topbar-height: 72px;
   display: flex;
   height: 100dvh;
   min-height: 0;
@@ -676,19 +678,19 @@ textarea:focus-visible {
 }
 
 .sidebar {
-  width: 172px;
-  min-width: 172px;
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
   height: 100dvh;
   overflow-y: auto;
-  padding: clamp(18px, 2.2vh, 24px) 20px;
-  gap: clamp(12px, 1.8vh, 18px);
+  padding: clamp(22px, 2.6vh, 30px) 24px;
+  gap: clamp(16px, 2vh, 24px);
   background: #3f69ef;
   color: #ffffff;
 }
 
 .sidebar-brand h1 {
   color: #ffffff;
-  font-size: 18px;
+  font-size: 24px;
   font-weight: 500;
   line-height: 1;
   letter-spacing: 0;
@@ -696,7 +698,7 @@ textarea:focus-visible {
 }
 
 .sidebar-profile {
-  gap: 10px;
+  gap: 12px;
   padding: 0;
   background: transparent;
   border: 0;
@@ -704,40 +706,40 @@ textarea:focus-visible {
 }
 
 .sidebar-avatar {
-  width: 24px;
-  height: 24px;
+  width: 36px;
+  height: 36px;
   border: 2px solid #17b4ff;
   background: transparent;
   color: #17b4ff;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .sidebar-name {
   color: #ffffff;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 800;
   line-height: 1;
 }
 
 .sidebar-id {
   color: rgba(255, 255, 255, 0.65);
-  font-size: 8px;
+  font-size: 11px;
   line-height: 1;
   margin-top: 4px;
 }
 
 .sidebar-nav {
-  gap: 4px;
+  gap: 8px;
 }
 
 .sidebar-link {
-  min-height: 28px;
+  min-height: 42px;
   display: flex;
   align-items: center;
-  padding: 6px 15px;
+  padding: 8px 18px;
   border-radius: 8px;
   color: #ffffff;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 800;
   line-height: 1;
 }
@@ -763,10 +765,11 @@ textarea:focus-visible {
   margin-top: auto;
   border: none;
   border-radius: 8px;
-  padding: 10px 14px;
+  min-height: 44px;
+  padding: 10px 16px;
   background: #e11d48;
   color: #ffffff;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 900;
   cursor: pointer;
   transition: background 0.2s ease, transform 0.2s ease;
@@ -782,40 +785,40 @@ textarea:focus-visible {
 }
 
 .topbar {
-  height: 60px;
+  height: var(--topbar-height);
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 30px;
-  padding: 0 22px;
+  gap: 34px;
+  padding: 0 30px;
   background: #ffffff;
 }
 
 .topbar-search {
   position: relative;
-  width: min(100%, 250px);
+  width: min(100%, 360px);
 }
 
 .topbar-search input {
   width: 100%;
-  height: 32px;
+  height: 42px;
   box-sizing: border-box;
   border: 0;
   border-radius: 12px;
   outline: none;
-  padding: 0 16px 0 40px;
+  padding: 0 18px 0 46px;
   background: #f2f3f5;
   color: #777d86;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 600;
 }
 
 .topbar-search-icon {
   position: absolute;
-  left: 14px;
+  left: 16px;
   top: 50%;
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
   transform: translateY(-50%);
   color: #777d86;
   pointer-events: none;
@@ -839,10 +842,10 @@ textarea:focus-visible {
 
 .topbar-search-result {
   display: grid;
-  grid-template-columns: 62px minmax(0, 1fr);
-  gap: 3px 10px;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 4px 12px;
   width: 100%;
-  padding: 10px 11px;
+  padding: 12px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -861,12 +864,12 @@ textarea:focus-visible {
   align-self: center;
   display: inline-flex;
   justify-content: center;
-  min-width: 50px;
-  padding: 4px 7px;
+  min-width: 58px;
+  padding: 5px 8px;
   border-radius: 999px;
   background: #e6ebf2;
   color: #1957ff;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 900;
   line-height: 1;
   text-transform: uppercase;
@@ -875,7 +878,7 @@ textarea:focus-visible {
 .topbar-search-result strong {
   overflow: hidden;
   color: #050505;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 900;
   line-height: 1.15;
   text-overflow: ellipsis;
@@ -885,7 +888,7 @@ textarea:focus-visible {
 .topbar-search-result small {
   overflow: hidden;
   color: #777d86;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -896,7 +899,7 @@ textarea:focus-visible {
   margin: 0;
   padding: 12px;
   color: #777d86;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 800;
 }
 
@@ -913,17 +916,116 @@ textarea:focus-visible {
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 17px;
+  gap: 22px;
 }
 
-.topbar-actions button {
-  width: 22px;
-  height: 22px;
+.topbar-action-wrap {
+  position: relative;
+}
+
+.topbar-actions > .topbar-action-wrap > button {
+  position: relative;
+  width: 30px;
+  height: 30px;
   padding: 0;
   border: 0;
   background: transparent;
   color: #777d7f;
   cursor: pointer;
+}
+
+.topbar-actions > .topbar-action-wrap > button:hover,
+.topbar-actions > .topbar-action-wrap > button[aria-expanded="true"] {
+  color: #062749;
+}
+
+.topbar-action-dot {
+  position: absolute;
+  right: 1px;
+  top: 1px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: #ff1010;
+}
+
+.topbar-action-panel {
+  position: absolute;
+  top: calc(100% + 14px);
+  right: 0;
+  z-index: 30;
+  width: 330px;
+  border: 1px solid #d7dce4;
+  border-radius: 16px;
+  padding: 14px;
+  background: #ffffff;
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.16);
+  box-sizing: border-box;
+}
+
+.topbar-action-panel > strong {
+  display: block;
+  margin: 2px 4px 12px;
+  color: #050505;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.topbar-action-panel button {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  min-height: 64px;
+  border: 0;
+  border-radius: 12px;
+  padding: 12px;
+  background: transparent;
+  color: #050505;
+  cursor: pointer;
+  text-align: left;
+}
+
+.topbar-action-panel button:hover,
+.topbar-action-panel button:focus-visible {
+  background: #eef2ff;
+}
+
+.topbar-action-panel span {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-action-panel small {
+  color: #59616d;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.form-options input[type="checkbox"],
+.remember-checkbox {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+
+.form-options input[type="checkbox"]:checked::after,
+.remember-checkbox:checked::after {
+  content: '✓';
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 900;
+  position: absolute;
+}
+
+.forgot-btn {
+  font-size: 16px;
+  font-weight: 700;
 }
 
 @media (max-width: 720px) {

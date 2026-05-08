@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { StatusMessage } from '../../components/ui';
@@ -6,29 +6,37 @@ import { formatName } from '../../utils/formatName';
 import {
   createCourse,
   createGradeScale,
-  createSubject,
-  createTeacherAssignment,
   createUser,
   deleteCourse,
-  deleteTeacherAssignment,
+  deleteGradeScale,
   deleteUser,
   getAuditLogs,
-  getBackup,
   getCourses,
   getGradeScales,
-  getSubjects,
   getTeacherAssignments,
   resetUserPassword,
-  restoreBackup,
   updateCourse,
+  updateGradeScale,
   updateUser,
 } from '../../services/adminService';
 import './ManageUsers.css';
 
-const emptyUserForm = { id: '', name: '', email: '', role: 'student', password: '' };
-const emptyAssignmentForm = { teacherId: '', studentId: '', subject: '', course: '', section: '', schoolYear: '2025-2026', semester: '1st Semester' };
+const emptyUserForm = {
+  id: '',
+  firstName: '',
+  lastName: '',
+  name: '',
+  email: '',
+  role: 'student',
+  status: 'Active',
+  course: 'BSIT',
+  department: 'Computer Studies',
+  semester: '1st Semester',
+  schoolYear: '2025-2026',
+  password: '',
+};
+const emptyResetPasswordForm = { password: '', confirmPassword: '' };
 const emptyCourseForm = { code: '', name: '', description: '', schedule: '', semester: '1st Semester', schoolYear: '2025-2026', teacherId: '' };
-const emptySubjectForm = { name: '', teacherId: '' };
 const emptyScaleForm = { label: '', minScore: 90, maxScore: 100, description: '' };
 const usersPerPage = 4;
 const coursesPerPage = 5;
@@ -45,6 +53,37 @@ const standardScaleRows = [
 ];
 
 const roleLabel = (role = '') => role.charAt(0).toUpperCase() + role.slice(1);
+
+const splitName = (name = '') => {
+  const parts = formatName(name).split(' ').filter(Boolean);
+
+  return {
+    firstName: parts[0] || '',
+    lastName: parts.slice(1).join(' ') || '',
+  };
+};
+
+const composeName = (form) => {
+  return `${form.firstName || ''} ${form.lastName || ''}`.trim() || form.name;
+};
+
+const parseScaleRange = (range = '') => {
+  const [minScore, maxScore] = range.match(/\d+/g)?.map(Number) || [0, 0];
+  return { minScore, maxScore };
+};
+
+const createScaleDraftRow = (row = {}, index = 0) => {
+  const rangeScores = row.range ? parseScaleRange(row.range) : {};
+
+  return {
+    clientId: row.id ? `scale-${row.id}` : `draft-${Date.now()}-${index}`,
+    id: row.id,
+    label: row.label || row.grade || '',
+    minScore: row.minScore ?? rangeScores.minScore ?? 0,
+    maxScore: row.maxScore ?? rangeScores.maxScore ?? 100,
+    description: row.description || row.title || '',
+  };
+};
 
 const getCourseDepartment = (course) => {
   const source = `${course.code || ''} ${course.name || ''} ${course.description || ''}`.toLowerCase();
@@ -354,21 +393,22 @@ const AuditLogsView = ({
   setCurrentPage,
 }) => {
   const userMap = useMemo(() => accountDetailsToMap(users), [users]);
+  const [filterTimestamp] = useState(() => Date.now());
   const actionTypes = useMemo(() => Array.from(new Set(auditLogs.map((log) => log.action))).sort(), [auditLogs]);
+
   const filteredLogs = useMemo(() => {
-    const now = Date.now();
     const dayLimit = dateRange === 'all' ? null : Number(dateRange);
 
     return auditLogs.filter((log) => {
       const changedAt = new Date(log.changedAt).getTime();
       const account = userMap.get(log.adminId);
-      const matchesDate = !dayLimit || (!Number.isNaN(changedAt) && now - changedAt <= dayLimit * 24 * 60 * 60 * 1000);
+      const matchesDate = !dayLimit || !filterTimestamp || (!Number.isNaN(changedAt) && filterTimestamp - changedAt <= dayLimit * 24 * 60 * 60 * 1000);
       const matchesRole = roleFilter === 'all' || (account?.role || 'unknown') === roleFilter;
       const matchesAction = actionFilter === 'all' || log.action === actionFilter;
 
       return matchesDate && matchesRole && matchesAction;
     });
-  }, [actionFilter, auditLogs, dateRange, roleFilter, userMap]);
+  }, [actionFilter, auditLogs, dateRange, filterTimestamp, roleFilter, userMap]);
   const totalPages = Math.max(1, Math.ceil(filteredLogs.length / auditLogsPerPage));
   const pageLogs = filteredLogs.slice((currentPage - 1) * auditLogsPerPage, currentPage * auditLogsPerPage);
   const pageStart = filteredLogs.length === 0 ? 0 : (currentPage - 1) * auditLogsPerPage + 1;
@@ -484,11 +524,13 @@ const AuditLogsView = ({
 const ManageUsers = () => {
   const { users, reloadData } = useAuth();
   const location = useLocation();
-  const restoreInputRef = useRef(null);
   const [userForm, setUserForm] = useState(emptyUserForm);
   const [editingUserId, setEditingUserId] = useState('');
   const [editingCourseId, setEditingCourseId] = useState('');
   const [isUserFormOpen, setIsUserFormOpen] = useState(false);
+  const [resetPasswordUser, setResetPasswordUser] = useState(null);
+  const [resetPasswordForm, setResetPasswordForm] = useState(emptyResetPasswordForm);
+  const [resetPasswordError, setResetPasswordError] = useState('');
   const [isCourseFormOpen, setIsCourseFormOpen] = useState(false);
   const [isScaleFormOpen, setIsScaleFormOpen] = useState(false);
   const [roleFilter, setRoleFilter] = useState('all');
@@ -501,13 +543,12 @@ const ManageUsers = () => {
   const [auditRoleFilter, setAuditRoleFilter] = useState('all');
   const [auditActionFilter, setAuditActionFilter] = useState('all');
   const [auditCurrentPage, setAuditCurrentPage] = useState(1);
-  const [assignmentForm, setAssignmentForm] = useState(emptyAssignmentForm);
   const [courseForm, setCourseForm] = useState(emptyCourseForm);
-  const [subjectForm, setSubjectForm] = useState(emptySubjectForm);
   const [scaleForm, setScaleForm] = useState(emptyScaleForm);
+  const [scaleDraftRows, setScaleDraftRows] = useState([]);
+  const [removedScaleIds, setRemovedScaleIds] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [courses, setCourses] = useState([]);
-  const [subjects, setSubjects] = useState([]);
   const [gradeScales, setGradeScales] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [successMessage, setSuccessMessage] = useState('');
@@ -515,13 +556,18 @@ const ManageUsers = () => {
   const [isSaving, setIsSaving] = useState(false);
 
   const teachers = users.filter((user) => user.role === 'teacher');
-  const students = users.filter((user) => user.role === 'student');
   const assignedTeacherIds = useMemo(() => new Set(assignments.map((assignment) => assignment.teacherId)), [assignments]);
   const filteredUsers = useMemo(() => {
     return users.filter((account) => roleFilter === 'all' || account.role === roleFilter);
   }, [roleFilter, users]);
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / usersPerPage));
   const pageUsers = filteredUsers.slice((currentPage - 1) * usersPerPage, currentPage * usersPerPage);
+  const editingUser = editingUserId ? users.find((account) => account.id === editingUserId) : null;
+  const editingUserAssignments = editingUserId ? assignments.filter((assignment) => assignment.teacherId === editingUserId || assignment.studentId === editingUserId) : [];
+  const assignedSubjectNames = new Set(editingUserAssignments.map((assignment) => assignment.subject).filter(Boolean));
+  const assignedCourseNames = new Set(editingUserAssignments.map((assignment) => assignment.course).filter(Boolean));
+  const subjectChecklist = Array.from(new Set([...assignments.map((assignment) => assignment.subject).filter(Boolean), 'Math', 'Programming', 'English', 'Science'])).slice(0, 5);
+  const courseChecklist = Array.from(new Set([...courses.map((course) => course.code).filter(Boolean), ...assignments.map((assignment) => assignment.course).filter(Boolean), 'BSIT - 1A', 'BSIT - 1B', 'BSCS - 1A'])).slice(0, 5);
   const activeAdminView = {
     '#courses': 'courses',
     '#grade-scale': 'grade-scale',
@@ -529,21 +575,19 @@ const ManageUsers = () => {
   }[location.hash] || 'users';
 
   const loadAdminData = async () => {
-    const [assignmentResult, courseResult, subjectResult, scaleResult, auditResult] = await Promise.all([
+    const [assignmentResult, courseResult, scaleResult, auditResult] = await Promise.all([
       loadAdminRequest('teacher assignments', getTeacherAssignments, []),
       loadAdminRequest('courses', getCourses, []),
-      loadAdminRequest('subjects', getSubjects, []),
       loadAdminRequest('grade scales', getGradeScales, []),
       loadAdminRequest('audit logs', getAuditLogs, []),
     ]);
 
     setAssignments(assignmentResult.data);
     setCourses(courseResult.data);
-    setSubjects(subjectResult.data);
     setGradeScales(scaleResult.data);
     setAuditLogs(auditResult.data);
 
-    const failedRequests = [assignmentResult, courseResult, subjectResult, scaleResult, auditResult].filter((result) => result.failed);
+    const failedRequests = [assignmentResult, courseResult, scaleResult, auditResult].filter((result) => result.failed);
 
     if (failedRequests.length > 0) {
       throw new Error(`Could not load admin ${failedRequests.map((result) => result.label).join(', ')}. Restart the server if this is a new database/schema change.`);
@@ -637,6 +681,9 @@ const ManageUsers = () => {
   };
 
   const openCreateScale = () => {
+    const sourceRows = gradeScales.length ? gradeScales : standardScaleRows;
+    setScaleDraftRows(sourceRows.map((row, index) => createScaleDraftRow(row, index)));
+    setRemovedScaleIds([]);
     setScaleForm(emptyScaleForm);
     setIsScaleFormOpen(true);
   };
@@ -647,6 +694,8 @@ const ManageUsers = () => {
     }
 
     setScaleForm(emptyScaleForm);
+    setScaleDraftRows([]);
+    setRemovedScaleIds([]);
     setIsScaleFormOpen(false);
   };
 
@@ -660,18 +709,33 @@ const ManageUsers = () => {
     setIsUserFormOpen(false);
   };
 
+  const closeResetPasswordForm = () => {
+    if (isSaving) {
+      return;
+    }
+
+    setResetPasswordUser(null);
+    setResetPasswordForm(emptyResetPasswordForm);
+    setResetPasswordError('');
+  };
+
   const handleSubmitUser = (event) => {
     event.preventDefault();
+    const userPayload = {
+      ...userForm,
+      name: composeName(userForm),
+      email: userForm.email || `${userForm.id || userForm.firstName || 'user'}@classiq.local`.toLowerCase().replace(/\s+/g, ''),
+    };
 
     runAdminAction(async () => {
       if (editingUserId) {
         await updateUser(editingUserId, {
-          name: userForm.name,
-          email: userForm.email,
-          role: userForm.role,
+          name: userPayload.name,
+          email: userPayload.email,
+          role: userPayload.role,
         });
       } else {
-        await createUser(userForm);
+        await createUser(userPayload);
       }
 
       setUserForm(emptyUserForm);
@@ -681,8 +745,25 @@ const ManageUsers = () => {
   };
 
   const handleEditUser = (currentUser) => {
+    const nameParts = splitName(currentUser.name);
+    const assignment = assignments.find((item) => item.teacherId === currentUser.id || item.studentId === currentUser.id);
+
     setEditingUserId(currentUser.id);
-    setUserForm({ id: currentUser.id, name: currentUser.name, email: currentUser.email, role: currentUser.role, password: '' });
+    setUserForm({
+      ...emptyUserForm,
+      id: currentUser.id,
+      name: formatName(currentUser.name),
+      firstName: nameParts.firstName,
+      lastName: nameParts.lastName,
+      email: currentUser.email,
+      role: currentUser.role,
+      status: getAccountStatus(currentUser),
+      course: assignment?.course || 'BSIT',
+      department: getCourseDepartment({ code: assignment?.course, name: assignment?.subject, description: assignment?.course }),
+      semester: assignment?.semester || '1st Semester',
+      schoolYear: assignment?.schoolYear || '2025-2026',
+      password: '',
+    });
     setIsUserFormOpen(true);
   };
 
@@ -695,25 +776,29 @@ const ManageUsers = () => {
   };
 
   const handleResetPassword = (currentUser) => {
-    const password = window.prompt(`Enter a new password for ${currentUser.name}.`);
+    setResetPasswordUser(currentUser);
+    setResetPasswordForm(emptyResetPasswordForm);
+    setResetPasswordError('');
+  };
 
-    if (!password) {
+  const handleSubmitResetPassword = (event) => {
+    event.preventDefault();
+
+    if (!resetPasswordUser) {
       return;
     }
 
-    runAdminAction(() => resetUserPassword(currentUser.id, password), 'Password reset successfully.');
-  };
+    if (resetPasswordForm.password !== resetPasswordForm.confirmPassword) {
+      setResetPasswordError('Passwords do not match.');
+      return;
+    }
 
-  const handleSubmitAssignment = (event) => {
-    event.preventDefault();
     runAdminAction(async () => {
-      await createTeacherAssignment(assignmentForm);
-      setAssignmentForm(emptyAssignmentForm);
-    }, 'Teacher assignment saved.');
-  };
-
-  const handleDeleteAssignment = (assignment) => {
-    runAdminAction(() => deleteTeacherAssignment(assignment.id), 'Teacher assignment removed.');
+      await resetUserPassword(resetPasswordUser.id, resetPasswordForm.password);
+      setResetPasswordUser(null);
+      setResetPasswordForm(emptyResetPasswordForm);
+      setResetPasswordError('');
+    }, 'Password reset successfully.');
   };
 
   const handleSubmitCourse = (event) => {
@@ -745,19 +830,62 @@ const ManageUsers = () => {
     runAdminAction(() => deleteCourse(course.id), 'Course deleted successfully.');
   };
 
-  const handleSubmitSubject = (event) => {
-    event.preventDefault();
-    runAdminAction(async () => {
-      await createSubject(subjectForm);
-      setSubjectForm(emptySubjectForm);
-    }, 'Subject created successfully.');
+  const handleScaleDraftChange = (clientId, field, value) => {
+    setScaleDraftRows((currentRows) => currentRows.map((row) => (
+      row.clientId === clientId ? { ...row, [field]: value } : row
+    )));
+  };
+
+  const handleAddScaleRow = () => {
+    setScaleDraftRows((currentRows) => [
+      ...currentRows,
+      createScaleDraftRow({ label: '', minScore: 0, maxScore: 0, description: '' }, currentRows.length),
+    ]);
+  };
+
+  const handleRemoveScaleRow = (row) => {
+    if (row.id) {
+      setRemovedScaleIds((currentIds) => [...currentIds, row.id]);
+    }
+
+    setScaleDraftRows((currentRows) => currentRows.filter((currentRow) => currentRow.clientId !== row.clientId));
   };
 
   const handleSubmitScale = (event) => {
     event.preventDefault();
+    const normalizedRows = scaleDraftRows.map((row) => ({
+      ...row,
+      minScore: Number(row.minScore),
+      maxScore: Number(row.maxScore),
+      label: String(row.label || '').trim(),
+      description: String(row.description || '').trim(),
+    }));
+
+    if (normalizedRows.length === 0) {
+      setErrorMessage('Add at least one grade scale row before saving.');
+      return;
+    }
+
+    if (normalizedRows.some((row) => !row.label || !Number.isFinite(row.minScore) || !Number.isFinite(row.maxScore))) {
+      setErrorMessage('Each row needs a grade label, minimum score, and maximum score.');
+      return;
+    }
+
     runAdminAction(async () => {
-      await createGradeScale({ ...scaleForm, minScore: Number(scaleForm.minScore), maxScore: Number(scaleForm.maxScore) });
+      await Promise.all(removedScaleIds.map((scaleId) => deleteGradeScale(scaleId)));
+      await Promise.all(normalizedRows.map((row) => {
+        const payload = {
+          label: row.label,
+          minScore: row.minScore,
+          maxScore: row.maxScore,
+          description: row.description,
+        };
+
+        return row.id ? updateGradeScale(row.id, payload) : createGradeScale(payload);
+      }));
       setScaleForm(emptyScaleForm);
+      setScaleDraftRows([]);
+      setRemovedScaleIds([]);
       setIsScaleFormOpen(false);
     }, 'Grade scale saved.');
   };
@@ -765,37 +893,6 @@ const ManageUsers = () => {
   const handleUnavailableScaleAction = () => {
     setErrorMessage('');
     setSuccessMessage('Performance audit completed. Grade scale settings are ready for review.');
-  };
-
-  const handleBackup = async () => {
-    await runAdminAction(async () => {
-      const snapshot = await getBackup();
-      const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-
-      link.href = url;
-      link.download = `student-tracker-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
-    }, 'Backup downloaded successfully.');
-  };
-
-  const handleRestoreFile = async (event) => {
-    const file = event.target.files?.[0];
-
-    if (!file) {
-      return;
-    }
-
-    try {
-      const snapshot = JSON.parse(await file.text());
-      await runAdminAction(() => restoreBackup(snapshot), 'Backup restored successfully.');
-    } catch {
-      setErrorMessage('The selected backup file is not valid JSON.');
-    } finally {
-      event.target.value = '';
-    }
   };
 
   const updateForm = (setter) => (event) => {
@@ -975,160 +1072,195 @@ const ManageUsers = () => {
           </div>
         </div>
       </section>
-
-      <div className="admin-tools-grid">
-        <section id="assignments" className="admin-tool-panel">
-          <h2>Assign Teachers to Students</h2>
-          <form className="admin-form-grid" onSubmit={handleSubmitAssignment}>
-            <select name="teacherId" value={assignmentForm.teacherId} onChange={updateForm(setAssignmentForm)} required>
-              <option value="">Teacher</option>
-              {teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{formatName(teacher.name)}</option>)}
-            </select>
-            <select name="studentId" value={assignmentForm.studentId} onChange={updateForm(setAssignmentForm)} required>
-              <option value="">Student</option>
-              {students.map((student) => <option key={student.id} value={student.id}>{formatName(student.name)}</option>)}
-            </select>
-            <input name="subject" placeholder="Subject" value={assignmentForm.subject} onChange={updateForm(setAssignmentForm)} required />
-            <input name="course" placeholder="Course" value={assignmentForm.course} onChange={updateForm(setAssignmentForm)} />
-            <input name="section" placeholder="Section" value={assignmentForm.section} onChange={updateForm(setAssignmentForm)} />
-            <input name="schoolYear" placeholder="School year" value={assignmentForm.schoolYear} onChange={updateForm(setAssignmentForm)} />
-            <select name="semester" value={assignmentForm.semester} onChange={updateForm(setAssignmentForm)}>
-              <option>1st Semester</option>
-              <option>2nd Semester</option>
-              <option>Summer</option>
-            </select>
-            <button type="submit" className="admin-tool-primary" disabled={isSaving}>Save Assignment</button>
-          </form>
-          <div className="admin-chip-grid">
-            {assignments.map((assignment) => (
-              <span key={assignment.id} className="admin-chip">
-                {assignment.teacherId} to {assignment.studentId} / {assignment.subject}
-                <button type="button" onClick={() => handleDeleteAssignment(assignment)} disabled={isSaving}>x</button>
-              </span>
-            ))}
-          </div>
-        </section>
-
-        <section id="courses" className="admin-tool-panel">
-          <h2>Courses</h2>
-          <form className="admin-stack-form" onSubmit={handleSubmitCourse}>
-            <input name="code" placeholder="Code" value={courseForm.code} onChange={updateForm(setCourseForm)} required />
-            <input name="name" placeholder="Course name" value={courseForm.name} onChange={updateForm(setCourseForm)} required />
-            <input name="description" placeholder="Description" value={courseForm.description} onChange={updateForm(setCourseForm)} />
-            <select name="teacherId" value={courseForm.teacherId} onChange={updateForm(setCourseForm)}>
-              <option value="">Teacher</option>
-              {teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{formatName(teacher.name)}</option>)}
-            </select>
-            <button type="submit" className="admin-tool-primary" disabled={isSaving}>Create Course</button>
-          </form>
-          <ul className="admin-list">{courses.map((course) => <li key={course.id}>{course.code} - {course.name}</li>)}</ul>
-        </section>
-
-        <section id="subjects" className="admin-tool-panel">
-          <h2>Subjects</h2>
-          <form className="admin-stack-form" onSubmit={handleSubmitSubject}>
-            <input name="name" placeholder="Subject name" value={subjectForm.name} onChange={updateForm(setSubjectForm)} required />
-            <select name="teacherId" value={subjectForm.teacherId} onChange={updateForm(setSubjectForm)} required>
-              <option value="">Teacher</option>
-              {teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{formatName(teacher.name)}</option>)}
-            </select>
-            <button type="submit" className="admin-tool-primary" disabled={isSaving}>Create Subject</button>
-          </form>
-          <ul className="admin-list">{subjects.map((subject) => <li key={subject.id}>{subject.name} - {subject.teacherId}</li>)}</ul>
-        </section>
-
-        <section id="grade-scale" className="admin-tool-panel">
-          <h2>Grade Scale</h2>
-          <form className="admin-form-grid" onSubmit={handleSubmitScale}>
-            <input name="label" placeholder="Label" value={scaleForm.label} onChange={updateForm(setScaleForm)} required />
-            <input name="minScore" type="number" placeholder="Min" value={scaleForm.minScore} onChange={updateForm(setScaleForm)} required />
-            <input name="maxScore" type="number" placeholder="Max" value={scaleForm.maxScore} onChange={updateForm(setScaleForm)} required />
-            <input name="description" placeholder="Rubric description" value={scaleForm.description} onChange={updateForm(setScaleForm)} />
-            <button type="submit" className="admin-tool-primary" disabled={isSaving}>Save Scale</button>
-          </form>
-          <div className="admin-chip-grid">
-            {gradeScales.map((scale) => (
-              <span key={scale.id} className="admin-chip">{scale.label}: {scale.minScore}-{scale.maxScore}</span>
-            ))}
-          </div>
-        </section>
-
-        <section id="audit-logs" className="admin-tool-panel">
-          <h2>Audit Logs</h2>
-          <div className="admin-table-scroll">
-            <table className="admin-small-table">
-              <thead>
-                <tr>
-                  <th>When</th>
-                  <th>Admin</th>
-                  <th>Action</th>
-                  <th>Table</th>
-                  <th>Record</th>
-                </tr>
-              </thead>
-              <tbody>
-                {auditLogs.map((log) => (
-                  <tr key={log.id}>
-                    <td>{new Date(log.changedAt).toLocaleString()}</td>
-                    <td>{log.adminId || 'system'}</td>
-                    <td>{log.action}</td>
-                    <td>{log.tableName}</td>
-                    <td>{log.recordId}</td>
-                  </tr>
-                ))}
-                {auditLogs.length === 0 && (
-                  <tr><td colSpan="5">No audit logs yet.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section className="admin-tool-panel">
-          <h2>System Data</h2>
-          <div className="admin-data-actions">
-            <button type="button" className="admin-tool-primary" onClick={handleBackup} disabled={isSaving}>Backup Data</button>
-            <button type="button" className="admin-tool-secondary" onClick={() => restoreInputRef.current?.click()} disabled={isSaving}>Restore Data</button>
-            <input ref={restoreInputRef} type="file" accept=".json" className="admin-hidden-file" onChange={handleRestoreFile} />
-          </div>
-        </section>
-      </div>
         </>
       )}
 
       {isUserFormOpen && (
         <div className="users-modal-overlay" role="presentation">
-          <form className="users-modal" onSubmit={handleSubmitUser} role="dialog" aria-modal="true" aria-labelledby="users-modal-title">
+          <form className={`users-modal user-form-modal ${editingUserId ? 'edit-user-modal' : 'add-user-modal'}`} onSubmit={handleSubmitUser} role="dialog" aria-modal="true" aria-labelledby="users-modal-title" autoComplete="off">
+            <span className="users-modal-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+                {!editingUserId && <path d="M19 8v6M16 11h6" />}
+              </svg>
+            </span>
             <h2 id="users-modal-title">{editingUserId ? 'Edit User' : 'Add User'}</h2>
-            <label>
-              <span>ID Number</span>
-              <input name="id" placeholder="ID number" value={userForm.id} onChange={updateForm(setUserForm)} disabled={Boolean(editingUserId)} required />
-            </label>
-            <label>
-              <span>Full Name</span>
-              <input name="name" placeholder="Full name" value={userForm.name} onChange={updateForm(setUserForm)} required />
-            </label>
-            <label>
-              <span>Email</span>
-              <input name="email" type="email" placeholder="Email" value={userForm.email} onChange={updateForm(setUserForm)} required />
-            </label>
-            <label>
-              <span>Role</span>
-              <select name="role" value={userForm.role} onChange={updateForm(setUserForm)}>
-                <option value="student">Student</option>
-                <option value="teacher">Teacher</option>
-                <option value="admin">Admin</option>
-              </select>
-            </label>
+            {editingUserId && (
+              <span className="users-form-avatar" aria-hidden="true">
+                <span>{`${userForm.firstName?.[0] || ''}${userForm.lastName?.[0] || ''}`.toUpperCase() || 'U'}</span>
+                <b />
+              </span>
+            )}
+
             {!editingUserId && (
               <label>
-                <span>Temporary Password</span>
-                <input name="password" type="password" placeholder="Temporary password" value={userForm.password} onChange={updateForm(setUserForm)} required />
+                <span>ID Number</span>
+                <input name="id" placeholder="e.g. 2025-001" value={userForm.id} onChange={updateForm(setUserForm)} autoComplete="off" required />
               </label>
             )}
+
+            <div className="users-form-grid">
+              <label>
+                <span>First Name</span>
+                <input name="firstName" placeholder="e.g. Jer Erick" value={userForm.firstName} onChange={updateForm(setUserForm)} autoComplete="given-name" required />
+              </label>
+              <label>
+                <span>Last Name</span>
+                <input name="lastName" placeholder="e.g. Dumalagan" value={userForm.lastName} onChange={updateForm(setUserForm)} autoComplete="family-name" required />
+              </label>
+            </div>
+
+            {!editingUserId && (
+              <label>
+                <span>Email</span>
+                <input name="email" type="email" placeholder="e.g. user@classiq.local" value={userForm.email} onChange={updateForm(setUserForm)} autoComplete="email" required />
+              </label>
+            )}
+
+            <div className="users-form-grid users-form-grid-two">
+              <label>
+                <span>Role</span>
+                <select name="role" value={userForm.role} onChange={updateForm(setUserForm)}>
+                  <option value="student">Student</option>
+                  <option value="teacher">Teacher</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </label>
+              {editingUserId ? (
+                <label>
+                  <span>Status</span>
+                  <select name="status" value={userForm.status} onChange={updateForm(setUserForm)}>
+                    <option>Active</option>
+                    <option>Unassigned</option>
+                    <option>Inactive</option>
+                  </select>
+                </label>
+              ) : (
+                <label>
+                  <span>Semester</span>
+                  <select name="semester" value={userForm.semester} onChange={updateForm(setUserForm)}>
+                    <option>1st Semester</option>
+                    <option>2nd Semester</option>
+                    <option>Summer</option>
+                  </select>
+                </label>
+              )}
+            </div>
+
+            {editingUserId && userForm.role === 'student' && (
+              <label>
+                <span>Course</span>
+                <select name="course" value={userForm.course} onChange={updateForm(setUserForm)}>
+                  <option>BSIT</option>
+                  <option>BSCS</option>
+                  <option>BSIS</option>
+                </select>
+              </label>
+            )}
+
+            {editingUserId && userForm.role === 'teacher' && (
+              <>
+                <label>
+                  <span>Department</span>
+                  <select name="department" value={userForm.department} onChange={updateForm(setUserForm)}>
+                    <option>Computer Studies</option>
+                    <option>General Education</option>
+                    <option>Engineering</option>
+                  </select>
+                </label>
+                <div className="users-assignment-grid">
+                  <section>
+                    <span>Assigned Subjects</span>
+                    {subjectChecklist.map((subject) => (
+                      <label key={subject} className="users-check-row">
+                        <b>{subject}</b>
+                        <input type="checkbox" checked={assignedSubjectNames.has(subject)} readOnly />
+                      </label>
+                    ))}
+                  </section>
+                  <section>
+                    <span>Assigned Courses</span>
+                    {courseChecklist.map((course) => (
+                      <label key={course} className="users-check-row">
+                        <b>{course}</b>
+                        <input type="checkbox" checked={assignedCourseNames.has(course)} readOnly />
+                      </label>
+                    ))}
+                  </section>
+                </div>
+              </>
+            )}
+
+            {!editingUserId && (
+              <div className="users-form-grid users-form-grid-two">
+                <label>
+                  <span>School Year</span>
+                  <input name="schoolYear" placeholder="2025-2026" value={userForm.schoolYear} onChange={updateForm(setUserForm)} />
+                </label>
+                <label>
+                  <span>Temporary Password</span>
+                  <input name="password" type="password" placeholder="Temporary password" value={userForm.password} onChange={updateForm(setUserForm)} autoComplete="new-password" required />
+                </label>
+              </div>
+            )}
+
+            {editingUserId && (
+              <section className="users-security-panel">
+                <span className="users-security-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M7 11V8a5 5 0 0 1 10 0v3" />
+                    <path d="M5 11h14v10H5z" />
+                  </svg>
+                </span>
+                <span>
+                  <strong>Authentication</strong>
+                  <small>Update user access credentials</small>
+                </span>
+                <button type="button" onClick={() => editingUser && handleResetPassword(editingUser)} disabled={isSaving || !editingUser}>
+                  Reset Password
+                </button>
+              </section>
+            )}
+
             <div className="users-modal-actions">
               <button type="button" className="admin-tool-secondary" onClick={closeUserForm} disabled={isSaving}>Cancel</button>
-              <button type="submit" className="users-primary-btn" disabled={isSaving}>{editingUserId ? 'Save User' : 'Add User'}</button>
+              <button type="submit" className="users-primary-btn" disabled={isSaving}>{editingUserId ? 'Save Changes' : 'Add New User'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {resetPasswordUser && (
+        <div className="users-modal-overlay" role="presentation">
+          <form className="users-modal reset-password-modal" onSubmit={handleSubmitResetPassword} role="dialog" aria-modal="true" aria-labelledby="reset-password-title" autoComplete="off">
+            <span className="users-modal-icon reset-password-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24">
+                <path d="M15 7a4 4 0 1 0-3.4 4" />
+                <path d="M12 11h9l-2 2 2 2" />
+              </svg>
+            </span>
+            <h2 id="reset-password-title">Reset Password</h2>
+            <label>
+              <span>User</span>
+              <input value={formatName(resetPasswordUser.name)} readOnly />
+            </label>
+            <label>
+              <span>New Password</span>
+              <input name="password" type="password" placeholder="New password" value={resetPasswordForm.password} onChange={updateForm(setResetPasswordForm)} autoComplete="new-password" required />
+            </label>
+            <label>
+              <span>Confirm Password</span>
+              <input name="confirmPassword" type="password" placeholder="Confirm password" value={resetPasswordForm.confirmPassword} onChange={updateForm(setResetPasswordForm)} autoComplete="new-password" required />
+            </label>
+            <p className="reset-password-warning">
+              <span aria-hidden="true">!</span>
+              User will need to log in again after resetting.
+            </p>
+            {resetPasswordError && <StatusMessage variant="error" className="users-status-message">{resetPasswordError}</StatusMessage>}
+            <div className="users-modal-actions reset-password-actions">
+              <button type="submit" className="users-primary-btn" disabled={isSaving}>Reset Password</button>
+              <button type="button" className="admin-tool-secondary" onClick={closeResetPasswordForm} disabled={isSaving}>Cancel</button>
             </div>
           </form>
         </div>
@@ -1186,27 +1318,67 @@ const ManageUsers = () => {
 
       {isScaleFormOpen && (
         <div className="users-modal-overlay" role="presentation">
-          <form className="users-modal" onSubmit={handleSubmitScale} role="dialog" aria-modal="true" aria-labelledby="scale-modal-title">
-            <h2 id="scale-modal-title">Edit Grade Scale</h2>
-            <label>
-              <span>Grade Label</span>
-              <input name="label" placeholder="e.g. A" value={scaleForm.label} onChange={updateForm(setScaleForm)} required />
-            </label>
-            <label>
-              <span>Minimum Score</span>
-              <input name="minScore" type="number" min="0" max="100" value={scaleForm.minScore} onChange={updateForm(setScaleForm)} required />
-            </label>
-            <label>
-              <span>Maximum Score</span>
-              <input name="maxScore" type="number" min="0" max="100" value={scaleForm.maxScore} onChange={updateForm(setScaleForm)} required />
-            </label>
-            <label>
-              <span>Description</span>
-              <input name="description" placeholder="Performance label" value={scaleForm.description} onChange={updateForm(setScaleForm)} />
-            </label>
-            <div className="users-modal-actions">
+          <form className="users-modal grade-scale-editor-modal" onSubmit={handleSubmitScale} role="dialog" aria-modal="true" aria-labelledby="scale-modal-title">
+            <header className="grade-scale-editor-header">
+              <h2 id="scale-modal-title">Edit Grade Scale</h2>
+              <p>Establish grading criteria for the current academic term. Changes will reflect across reports and gradebooks.</p>
+            </header>
+
+            <div className="grade-scale-editor-table">
+              <div className="grade-scale-editor-head">
+                <span>Range (%)</span>
+                <span>Grade</span>
+                <span>Description</span>
+                <span>Action</span>
+              </div>
+              {scaleDraftRows.map((row) => (
+                <div className="grade-scale-editor-row" key={row.clientId}>
+                  <div className="scale-range-inputs">
+                    <input
+                      aria-label="Minimum score"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={row.minScore}
+                      onChange={(event) => handleScaleDraftChange(row.clientId, 'minScore', event.target.value)}
+                      required
+                    />
+                    <span>-</span>
+                    <input
+                      aria-label="Maximum score"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={row.maxScore}
+                      onChange={(event) => handleScaleDraftChange(row.clientId, 'maxScore', event.target.value)}
+                      required
+                    />
+                  </div>
+                  <input
+                    aria-label="Grade label"
+                    value={row.label}
+                    onChange={(event) => handleScaleDraftChange(row.clientId, 'label', event.target.value)}
+                    required
+                  />
+                  <input
+                    aria-label="Description"
+                    value={row.description}
+                    onChange={(event) => handleScaleDraftChange(row.clientId, 'description', event.target.value)}
+                    placeholder="Performance label"
+                  />
+                  <button type="button" aria-label={`Remove ${row.label || 'grade scale'} row`} onClick={() => handleRemoveScaleRow(row)} disabled={isSaving || scaleDraftRows.length === 1}>Remove</button>
+                </div>
+              ))}
+            </div>
+
+            <button type="button" className="grade-scale-add-row" onClick={handleAddScaleRow} disabled={isSaving}>
+              <span aria-hidden="true">+</span>
+              Add Row
+            </button>
+
+            <div className="users-modal-actions grade-scale-editor-actions">
               <button type="button" className="admin-tool-secondary" onClick={closeScaleForm} disabled={isSaving}>Cancel</button>
-              <button type="submit" className="users-primary-btn" disabled={isSaving}>Save Scale</button>
+              <button type="submit" className="users-primary-btn" disabled={isSaving}>Save Changes</button>
             </div>
           </form>
         </div>

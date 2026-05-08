@@ -73,6 +73,19 @@ export const createGradeScale = (scale: GradeScale) => {
   return apiPost<GradeScale, GradeScale>('/grade-scales', scale);
 };
 
+export const updateGradeScale = (scaleId: number, scale: GradeScale) => {
+  return apiRequest<GradeScale>(`/grade-scales/${scaleId}`, {
+    method: 'PUT',
+    body: JSON.stringify(scale),
+  });
+};
+
+export const deleteGradeScale = (scaleId: number) => {
+  return apiRequest<{ ok: boolean }>(`/grade-scales/${scaleId}`, {
+    method: 'DELETE',
+  });
+};
+
 export const getAuditLogs = () => apiRequest<AuditLog[]>('/audit-logs');
 
 export const getBackup = () => apiRequest<Record<string, unknown>>('/backup');

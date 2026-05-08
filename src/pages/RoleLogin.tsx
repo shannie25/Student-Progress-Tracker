@@ -24,8 +24,8 @@ type RoleLoginProps = {
 };
 
 const eyeIconProps = {
-  width: '22',
-  height: '22',
+  width: '26',
+  height: '26',
   viewBox: '0 0 24 24',
   fill: 'none',
   stroke: '#6b7280',
@@ -221,25 +221,25 @@ const RoleLogin = ({
 };
 
 const styles: Record<string, CSSProperties> = {
-  container: { display: 'flex', justifyContent: 'center', alignItems: 'center' },
-  card: { background: 'white', padding: '40px', borderRadius: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', width: '100%', maxWidth: '400px' },
-  header: { textAlign: 'center', marginBottom: '25px' },
-  title: { margin: '0', fontSize: '24px', color: '#111827', fontWeight: '700' },
-  subtitle: { color: '#6b7280', fontSize: '14px', marginTop: '8px' },
-  form: { display: 'flex', flexDirection: 'column', gap: '20px' },
-  inputGroup: { display: 'flex', flexDirection: 'column', gap: '8px' },
-  label: { fontSize: '14px', fontWeight: '600', color: '#374151' },
-  input: { padding: '14px 16px', backgroundColor: '#e5e7eb', border: 'none', borderRadius: '12px', fontSize: '16px', outline: 'none', color: '#111827', caretColor: '#111827', WebkitTextFillColor: '#111827' },
+  container: { display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' },
+  card: { background: 'white', padding: '56px 52px', borderRadius: '22px', boxShadow: '0 18px 40px rgba(15,23,42,0.08)', width: '100%', maxWidth: '520px' },
+  header: { textAlign: 'center', marginBottom: '34px' },
+  title: { margin: '0', fontSize: '32px', color: '#111827', fontWeight: '800', lineHeight: '1.15' },
+  subtitle: { color: '#4b5563', fontSize: '17px', marginTop: '12px', lineHeight: '1.35' },
+  form: { display: 'flex', flexDirection: 'column', gap: '24px' },
+  inputGroup: { display: 'flex', flexDirection: 'column', gap: '11px' },
+  label: { fontSize: '17px', fontWeight: '700', color: '#1f2937' },
+  input: { minHeight: '58px', padding: '0 20px', backgroundColor: '#e5e7eb', border: 'none', borderRadius: '14px', fontSize: '18px', outline: 'none', color: '#111827', caretColor: '#111827', WebkitTextFillColor: '#111827', boxSizing: 'border-box' },
   passwordWrapper: { position: 'relative', width: '100%' },
-  passwordInput: { width: '100%', padding: '14px 16px', paddingRight: '45px', backgroundColor: '#e5e7eb', border: 'none', borderRadius: '12px', fontSize: '16px', outline: 'none', boxSizing: 'border-box', color: '#111827', caretColor: '#111827', WebkitTextFillColor: '#111827' },
-  eyeIconButton: { position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', display: 'flex', border: 'none', background: 'transparent', padding: 0 },
-  formOptions: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' },
-  rememberLabel: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: '#374151', cursor: 'pointer' },
-  forgotButton: { alignSelf: 'flex-end', background: 'transparent', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '14px', fontWeight: '600', padding: '0' },
-  signUpText: { display: 'flex', justifyContent: 'center', width: '100%', marginTop: '16px', color: '#374151', fontSize: '14px' },
-  signUpLink: { color: '#2563eb', textDecoration: 'none', fontWeight: '600' },
-  button: { padding: '14px', borderRadius: '12px', border: 'none', color: 'white', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px' },
-  errorBox: { color: '#b91c1c', backgroundColor: '#fef2f2', padding: '10px', borderRadius: '8px', textAlign: 'center', marginBottom: '15px', border: '1px solid #fecaca', fontSize: '14px' },
+  passwordInput: { width: '100%', minHeight: '58px', padding: '0 58px 0 20px', backgroundColor: '#e5e7eb', border: 'none', borderRadius: '14px', fontSize: '18px', outline: 'none', boxSizing: 'border-box', color: '#111827', caretColor: '#111827', WebkitTextFillColor: '#111827' },
+  eyeIconButton: { position: 'absolute', right: '18px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', display: 'flex', border: 'none', background: 'transparent', padding: '4px' },
+  formOptions: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', fontSize: '16px' },
+  rememberLabel: { display: 'flex', alignItems: 'center', gap: '10px', fontSize: '16px', color: '#1f2937', cursor: 'pointer' },
+  forgotButton: { alignSelf: 'flex-end', background: 'transparent', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '16px', fontWeight: '700', padding: '0' },
+  signUpText: { display: 'flex', justifyContent: 'center', width: '100%', marginTop: '22px', color: '#1f2937', fontSize: '16px' },
+  signUpLink: { color: '#2563eb', textDecoration: 'none', fontWeight: '700' },
+  button: { minHeight: '58px', padding: '0 18px', borderRadius: '14px', border: 'none', color: 'white', fontSize: '17px', fontWeight: 'bold', cursor: 'pointer', marginTop: '12px' },
+  errorBox: { color: '#b91c1c', backgroundColor: '#fef2f2', padding: '14px', borderRadius: '10px', textAlign: 'center', marginBottom: '18px', border: '1px solid #fecaca', fontSize: '15px' },
 };
 
 export default RoleLogin;

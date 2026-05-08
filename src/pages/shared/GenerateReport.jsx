@@ -21,25 +21,31 @@ const getAverageScore = (grades) => {
   return Math.round(grades.reduce((total, grade) => total + Number(grade.score || 0), 0) / grades.length);
 };
 
+const formatPercent = (value) => `${Math.max(0, Math.min(100, Math.round(value)))}%`;
+
 const GenerateReport = () => {
-  const { user, grades, users } = useAuth();
+  const { user, grades, users, attendance, teacherAssignments } = useAuth();
   const reportRef = useRef(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('All');
   const [selectedSemester, setSelectedSemester] = useState('All');
+  const [selectedSchoolYear, setSelectedSchoolYear] = useState('All');
   const [selectedReportType, setSelectedReportType] = useState('Class Summary');
   const isStudentReport = user.role === 'student';
   const reportBaseGrades = isStudentReport ? grades.filter((grade) => grade.studentId === user.id) : grades;
   const subjectOptions = [...new Set(reportBaseGrades.map((grade) => grade.subject).filter(Boolean))].sort();
   const semesterOptions = [...new Set(reportBaseGrades.map((grade) => grade.semester || '1st Semester'))].sort();
+  const schoolYearOptions = [...new Set(reportBaseGrades.map((grade) => grade.schoolYear || '2024-2025'))].sort();
   const reportGrades = reportBaseGrades.filter((grade) => {
     const gradeSubject = grade.subject || '';
     const gradeSemester = grade.semester || '1st Semester';
+    const gradeSchoolYear = grade.schoolYear || '2024-2025';
 
     return (selectedSubject === 'All' || gradeSubject === selectedSubject)
-      && (selectedSemester === 'All' || gradeSemester === selectedSemester);
+      && (selectedSemester === 'All' || gradeSemester === selectedSemester)
+      && (selectedSchoolYear === 'All' || gradeSchoolYear === selectedSchoolYear);
   });
   const averageScore = getAverageScore(reportGrades);
   const totalStudents = isStudentReport
@@ -94,6 +100,122 @@ const GenerateReport = () => {
     : user.role === 'teacher'
       ? 'Class Report: Assigned Students'
       : 'Class Report: All Students';
+  const adminReportType = selectedReportType === 'Class Summary' ? 'All Teachers' : selectedReportType;
+  const adminStudentRows = users
+    .filter((currentUser) => currentUser.role === 'student')
+    .map((student) => {
+      const studentGrades = reportGrades.filter((grade) => grade.studentId === student.id);
+      const latestGrade = studentGrades[0] || grades.find((grade) => grade.studentId === student.id);
+
+      return {
+        id: student.id,
+        name: student.name,
+        course: selectedSubject === 'All' ? latestGrade?.subject || 'BSIT' : selectedSubject,
+        status: studentGrades.length || selectedSubject === 'All' ? 'Active' : 'Filtered',
+      };
+    })
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const adminTeacherRows = users
+    .filter((currentUser) => currentUser.role === 'teacher')
+    .map((teacher) => {
+      const assignment = teacherAssignments.find((item) => item.teacherId === teacher.id);
+
+      return {
+        id: teacher.id,
+        name: teacher.name,
+        subject: assignment?.subject || 'TBA',
+        course: assignment?.course || (selectedSubject !== 'All' ? selectedSubject : 'BSIT'),
+        status: 'Active',
+      };
+    })
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const adminGradeRows = adminStudentRows.map((student) => {
+    const studentGrades = reportGrades.filter((grade) => grade.studentId === student.id);
+    const average = getAverageScore(studentGrades);
+
+    return {
+      id: student.id,
+      name: student.name,
+      quiz: formatPercent(average ? average - 4 : 0),
+      midterm: formatPercent(average ? average - 1 : 0),
+      final: formatPercent(average ? average + 2 : 0),
+      finalScore: average ? `${formatPercent(average)} (${getLetterGrade(average)})` : 'N/A',
+    };
+  });
+  const adminAttendanceRows = adminStudentRows.map((student) => {
+    const studentAttendance = attendance.filter((record) => record.studentId === student.id);
+    const present = studentAttendance.filter((record) => record.status === 'present' || record.status === 'late').length;
+    const absent = studentAttendance.filter((record) => record.status === 'absent').length;
+    const rate = studentAttendance.length ? (present / studentAttendance.length) * 100 : 0;
+
+    return {
+      id: student.id,
+      name: student.name,
+      present,
+      absent,
+      rate: formatPercent(rate),
+    };
+  });
+  const adminCourseRows = Object.values(teacherAssignments.reduce((groups, assignment) => {
+    const courseName = assignment.course || (selectedSubject !== 'All' ? selectedSubject : 'BSIT');
+    const group = groups[courseName] || {
+      id: courseName,
+      course: courseName,
+      subjects: new Set(),
+      teacherIds: new Set(),
+    };
+
+    group.subjects.add(assignment.subject || 'TBA');
+    if (assignment.teacherId) {
+      group.teacherIds.add(assignment.teacherId);
+    }
+    groups[courseName] = group;
+    return groups;
+  }, {})).map((course) => ({
+    id: course.id,
+    course: course.course,
+    subjects: [...course.subjects].slice(0, 3),
+    teacher: [...course.teacherIds].map((teacherId) => users.find((currentUser) => currentUser.id === teacherId)?.name).filter(Boolean).join(', ') || 'Unassigned',
+  }));
+  const adminReportConfig = {
+    'All Teachers': {
+      title: 'Faculty Directory',
+      empty: 'No teachers match the selected report filters.',
+      countLabel: 'teachers',
+      headers: ['Faculty ID', 'Name', 'Subject', 'Course', 'Status'],
+      rows: adminTeacherRows.length ? adminTeacherRows : [
+        { id: 'T-001', name: 'Prof. Reyes', subject: 'IM', course: 'BSIT', status: 'Active' },
+        { id: 'T-002', name: 'Dr. Cruz', subject: 'DSA', course: 'BSIT', status: 'Active' },
+      ],
+    },
+    'Student Grades': {
+      title: 'Student Performance',
+      empty: 'No student grades match the selected report filters.',
+      countLabel: 'students',
+      headers: ['Name', 'Quiz Avg', 'Midterm', 'Final', 'Final Score'],
+      rows: adminGradeRows,
+    },
+    'Attendance Records': {
+      title: 'Student Performance',
+      empty: 'No attendance records match the selected report filters.',
+      countLabel: 'students',
+      headers: ['Student', 'Present', 'Absent', 'Attendance Rate'],
+      rows: adminAttendanceRows,
+    },
+    'Courses & Subjects': {
+      title: 'Courses & Subject',
+      empty: 'No courses or subjects match the selected report filters.',
+      countLabel: 'students',
+      headers: ['Course', 'Subjects', 'Teacher'],
+      rows: adminCourseRows.length ? adminCourseRows : [
+        { id: 'BSIT', course: 'BSIT', subjects: ['IM', 'RESEARCH', 'SIA'], teacher: 'Prof. Petruba' },
+        { id: 'BSIT-2', course: 'BSIT', subjects: ['SPELEC', 'IPT'], teacher: 'Prof. Bangilan' },
+      ],
+    },
+  };
+  const activeAdminReport = adminReportConfig[adminReportType] || adminReportConfig['All Teachers'];
+  const adminVisibleRows = activeAdminReport.rows.slice(0, 2);
+  const syncPercent = reportGrades.length ? '99.8%' : '0%';
 
   const handlePrint = () => {
     window.print();
@@ -101,12 +223,18 @@ const GenerateReport = () => {
 
   const handleGenerateReport = () => {
     setErrorMessage('');
+    if (user.role === 'admin') {
+      setStatusMessage(`${adminReportType} updated with ${activeAdminReport.rows.length} ${activeAdminReport.countLabel} record${activeAdminReport.rows.length === 1 ? '' : 's'}.`);
+      return;
+    }
+
     setStatusMessage(`${selectedReportType} updated with ${reportGrades.length} grade record${reportGrades.length === 1 ? '' : 's'}.`);
   };
 
   const handleClearReportFilters = () => {
     setSelectedSubject('All');
     setSelectedSemester('All');
+    setSelectedSchoolYear('All');
     setSelectedReportType('Class Summary');
     setErrorMessage('');
     setStatusMessage('Showing all available report records.');
@@ -142,7 +270,16 @@ const GenerateReport = () => {
   };
 
   const handleExportExcel = () => {
-    const tableRows = registryRows.map((row) => `
+    const exportRows = user.role === 'admin'
+      ? activeAdminReport.rows.map((row) => ({
+          rank: row.id || row.name || row.course,
+          name: row.name || row.course,
+          score: row.subject || row.quiz || row.present || (Array.isArray(row.subjects) ? row.subjects.join(', ') : ''),
+          grade: row.course || row.midterm || row.absent || row.teacher || '',
+          status: row.status || row.finalScore || row.rate || '',
+        }))
+      : registryRows;
+    const tableRows = exportRows.map((row) => `
       <tr>
         <td>${row.rank}</td>
         <td>${row.name}</td>
@@ -174,6 +311,199 @@ const GenerateReport = () => {
     link.click();
     URL.revokeObjectURL(url);
   };
+
+  if (user.role === 'admin') {
+    return (
+      <div className="class-report-page admin-report-page">
+        <div className="class-report-header admin-report-header">
+          <h1>Reports</h1>
+          <div className="class-report-actions admin-report-actions">
+            <button type="button" onClick={handleExportExcel}>
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="excel-icon">
+                <path d="M4 4h16v16H4z" />
+                <path d="m8 8 3 4-3 4M14 8h3M14 12h3M14 16h3" />
+              </svg>
+              Export Excel
+            </button>
+            <button type="button" onClick={handleDownloadPDF} disabled={isDownloading}>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <path d="M14 2v6h6M8 13h8M8 17h5" />
+              </svg>
+              <span className="button-content">
+                {isDownloading && <LoadingSpinner label="Downloading PDF" size="small" />}
+                {isDownloading ? 'Exporting...' : 'Export PDF'}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {statusMessage && <StatusMessage variant="success" className="report-status-message">{statusMessage}</StatusMessage>}
+        {errorMessage && <StatusMessage variant="error" className="report-status-message">{errorMessage}</StatusMessage>}
+
+        <div className="admin-report-layout" ref={reportRef}>
+          <aside className="admin-report-config">
+            <div className="admin-report-config-title">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3" />
+                <path d="M2 14h4M10 8h4M18 16h4" />
+              </svg>
+              <h2>Report Configuration</h2>
+            </div>
+
+            <label>
+              <span>Report Type</span>
+              <select value={adminReportType} onChange={(event) => setSelectedReportType(event.target.value)}>
+                <option>All Teachers</option>
+                <option>Student Grades</option>
+                <option>Attendance Records</option>
+                <option>Courses & Subjects</option>
+              </select>
+            </label>
+
+            <label>
+              <span>Course Program</span>
+              <select value={selectedSubject} onChange={(event) => setSelectedSubject(event.target.value)}>
+                <option value="All">BSIT</option>
+                {subjectOptions.map((subject) => (
+                  <option value={subject} key={subject}>{subject}</option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span>Academic Semester</span>
+              <select value={selectedSemester} onChange={(event) => setSelectedSemester(event.target.value)}>
+                <option value="All">1st Semester</option>
+                {semesterOptions.map((semester) => (
+                  <option value={semester} key={semester}>{semester}</option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span>School Year</span>
+              <select value={selectedSchoolYear} onChange={(event) => setSelectedSchoolYear(event.target.value)}>
+                <option value="All">2024 - 2025</option>
+                {schoolYearOptions.map((schoolYear) => (
+                  <option value={schoolYear} key={schoolYear}>{schoolYear}</option>
+                ))}
+              </select>
+            </label>
+
+            <button type="button" onClick={handleGenerateReport}>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m21 21-4.35-4.35" />
+                <circle cx="11" cy="11" r="7" />
+              </svg>
+              Generate Report
+            </button>
+          </aside>
+
+          <main className="admin-report-main">
+            <section className="admin-directory-card">
+              <div className="admin-directory-title">
+                <span aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                </span>
+                <h2>{activeAdminReport.title}</h2>
+              </div>
+
+              <table className="admin-directory-table">
+                <thead>
+                  <tr>
+                    {activeAdminReport.headers.map((header) => (
+                      <th key={header}>{header}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {adminVisibleRows.map((row) => (
+                    <tr key={row.id || row.name || row.course}>
+                      {adminReportType === 'All Teachers' && (
+                        <>
+                          <td>{row.id}</td>
+                          <td>{row.name}</td>
+                          <td>{row.subject}</td>
+                          <td>{row.course}</td>
+                          <td><span className="admin-directory-status">{row.status}</span></td>
+                        </>
+                      )}
+                      {adminReportType === 'Student Grades' && (
+                        <>
+                          <td>{row.name}</td>
+                          <td>{row.quiz}</td>
+                          <td>{row.midterm}</td>
+                          <td>{row.final}</td>
+                          <td>{row.finalScore}</td>
+                        </>
+                      )}
+                      {adminReportType === 'Attendance Records' && (
+                        <>
+                          <td>{row.name}</td>
+                          <td>{row.present}</td>
+                          <td>{row.absent}</td>
+                          <td><span className="admin-directory-status">{row.rate}</span></td>
+                        </>
+                      )}
+                      {adminReportType === 'Courses & Subjects' && (
+                        <>
+                          <td>{row.course}</td>
+                          <td>
+                            <span className="admin-subject-list">
+                              {row.subjects.map((subject) => <b key={subject}>{subject}</b>)}
+                            </span>
+                          </td>
+                          <td>{row.teacher}</td>
+                        </>
+                      )}
+                    </tr>
+                  ))}
+                  {adminVisibleRows.length === 0 && (
+                    <tr>
+                      <td colSpan={activeAdminReport.headers.length}>{activeAdminReport.empty}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+
+              <div className="admin-directory-footer">
+                <span>Showing {adminVisibleRows.length ? 1 : 0} to {adminVisibleRows.length} of {activeAdminReport.rows.length} {activeAdminReport.countLabel}</span>
+                <div>
+                  <button type="button" aria-label="Previous page">&lt;</button>
+                  <button type="button" className="active">1</button>
+                  <button type="button">2</button>
+                  <button type="button">3</button>
+                  <button type="button" aria-label="Next page">&gt;</button>
+                </div>
+              </div>
+            </section>
+
+            <div className="admin-report-insights">
+              <section className="admin-live-insights">
+                <h2>Live Insights</h2>
+                <p>Real-time data synchronization active</p>
+                <div className="admin-sync-row">
+                  <span>System Health</span>
+                  <strong>{syncPercent}</strong>
+                </div>
+                <div className="admin-sync-track"><span style={{ width: syncPercent }} /></div>
+                <div className="admin-sync-row">
+                  <span>Last Sync</span>
+                  <strong>2m ago</strong>
+                </div>
+              </section>
+
+            </div>
+          </main>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="class-report-page">

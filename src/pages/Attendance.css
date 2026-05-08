@@ -524,6 +524,180 @@
   color: #ffffff;
 }
 
+.attendance-page {
+  min-height: calc(100dvh - var(--topbar-height, 72px));
+  padding: clamp(30px, 3vw, 52px);
+}
+
+.attendance-toolbar {
+  margin-bottom: 32px;
+}
+
+.attendance-toolbar h1 {
+  font-size: clamp(32px, 2.7vw, 40px);
+}
+
+.attendance-filters {
+  gap: 22px;
+}
+
+.attendance-filters span {
+  font-size: 12px;
+}
+
+.attendance-filters select {
+  min-width: 150px;
+  height: 56px;
+  border-radius: 12px;
+  font-size: 17px;
+}
+
+.attendance-filters label:last-child select {
+  min-width: 180px;
+}
+
+.attendance-stats,
+.attendance-grid,
+.attendance-main,
+.attendance-side {
+  gap: 28px;
+}
+
+.attendance-stats {
+  margin-bottom: 30px;
+}
+
+.attendance-stat-card,
+.trend-card,
+.monthly-summary-card,
+.calendar-card,
+.daily-records article {
+  border-radius: 18px;
+}
+
+.attendance-stat-card {
+  min-height: 150px;
+  padding: 30px 32px;
+}
+
+.attendance-stat-card h2 {
+  color: #59616d;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.attendance-stat-card p {
+  font-size: clamp(44px, 4vw, 56px);
+}
+
+.trend-card {
+  min-height: 450px;
+  padding: 32px 36px 28px;
+}
+
+.trend-header h2,
+.monthly-summary-card h2,
+.calendar-card h2,
+.daily-records h2 {
+  font-size: 24px;
+}
+
+.trend-legend,
+.calendar-legend {
+  font-size: 15px;
+}
+
+.present-dot,
+.late-dot,
+.absent-dot {
+  width: 12px;
+  height: 12px;
+}
+
+.trend-chart {
+  height: 330px;
+}
+
+.bar-track {
+  width: 62px;
+}
+
+.trend-column small {
+  font-size: 14px;
+}
+
+.monthly-summary-card,
+.calendar-card {
+  padding: 30px 32px;
+}
+
+.monthly-summary-card th,
+.monthly-summary-card td {
+  height: 58px;
+  font-size: 15px;
+}
+
+.monthly-summary-card th {
+  color: #59616d;
+  font-size: 12px;
+}
+
+.monthly-summary-card td span {
+  min-width: 86px;
+  min-height: 30px;
+  font-size: 12px;
+}
+
+.calendar-header button {
+  width: 40px;
+  height: 40px;
+}
+
+.calendar-grid span {
+  min-height: 46px;
+  font-size: 15px;
+}
+
+.calendar-weekdays {
+  font-size: 13px;
+}
+
+.daily-record-list {
+  gap: 14px;
+}
+
+.daily-records article {
+  grid-template-columns: 78px minmax(0, 1fr) 86px;
+  min-height: 72px;
+  padding: 16px 18px;
+}
+
+.daily-records time,
+.daily-records strong {
+  font-size: 16px;
+}
+
+.daily-records span {
+  font-size: 13px;
+}
+
+.daily-records article b {
+  min-height: 30px;
+  font-size: 13px;
+}
+
+.detailed-log-btn,
+.attendance-actions button {
+  min-height: 56px;
+  border-radius: 12px;
+  font-size: 15px;
+}
+
+.attendance-actions svg {
+  width: 22px;
+  height: 22px;
+}
+
 @media (max-width: 1120px) {
   .attendance-stats,
   .attendance-grid {

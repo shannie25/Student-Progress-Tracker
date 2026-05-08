@@ -76,6 +76,7 @@ const Dashboard = () => {
   const [adminCourseForm, setAdminCourseForm] = useState(emptyAdminCourseForm);
   const [addUserError, setAddUserError] = useState('');
   const [addCourseError, setAddCourseError] = useState('');
+  const [isReviewPlanOpen, setIsReviewPlanOpen] = useState(false);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [isCreatingCourse, setIsCreatingCourse] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
@@ -622,7 +623,7 @@ const Dashboard = () => {
           <section className="teacher-card teacher-insight-card">
             <h2>Course Insights</h2>
             <p>Students are struggling with "Quadratic Equations". Consider a review session this Friday.</p>
-            <button type="button">Review Session Plans {'>'}</button>
+            <button type="button" onClick={() => setIsReviewPlanOpen(true)}>Review Session Plans {'>'}</button>
           </section>
         </div>
 
@@ -665,6 +666,34 @@ const Dashboard = () => {
             </div>
           </section>
         </div>
+
+        {isReviewPlanOpen && (
+          <div className="teacher-review-overlay" role="presentation">
+            <section className="teacher-review-modal" role="dialog" aria-modal="true" aria-labelledby="review-plan-title">
+              <button type="button" className="teacher-review-close" aria-label="Close review session plan" onClick={() => setIsReviewPlanOpen(false)}>x</button>
+              <h2 id="review-plan-title">Review Session Plan</h2>
+              <p>Suggested focus: Quadratic Equations</p>
+              <div className="teacher-review-list">
+                <article>
+                  <strong>1. Diagnostic Warm-up</strong>
+                  <span>Start with three quick items to identify factoring, graphing, and formula gaps.</span>
+                </article>
+                <article>
+                  <strong>2. Guided Practice</strong>
+                  <span>Work through two solved examples, then let students complete paired problems.</span>
+                </article>
+                <article>
+                  <strong>3. Exit Check</strong>
+                  <span>Collect a short quiz and tag students who need individual follow-up.</span>
+                </article>
+              </div>
+              <div className="teacher-review-actions">
+                <button type="button" onClick={() => setIsReviewPlanOpen(false)}>Close</button>
+                <button type="button" onClick={() => navigate('/grades-management')}>Open Grades Management</button>
+              </div>
+            </section>
+          </div>
+        )}
       </div>
     );
   }

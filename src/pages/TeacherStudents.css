@@ -986,6 +986,311 @@
   color: #ffffff;
 }
 
+.teacher-students-page,
+.student-profile-page {
+  min-height: calc(100dvh - var(--topbar-height, 72px));
+  padding: clamp(30px, 3vw, 52px);
+}
+
+.teacher-students-page h1,
+.profile-identity strong {
+  font-size: clamp(32px, 2.7vw, 40px);
+}
+
+.teacher-students-controls {
+  gap: 22px;
+  margin-bottom: 30px;
+}
+
+.teacher-students-search input,
+.teacher-students-select select {
+  height: 56px;
+  border-radius: 12px;
+  font-size: 16px;
+}
+
+.teacher-students-search svg {
+  width: 22px;
+  height: 22px;
+}
+
+.students-cohort-card,
+.profile-summary-card,
+.subject-performance,
+.profile-attendance-card,
+.profile-feedback-card,
+.growth-card {
+  border-radius: 18px;
+}
+
+.students-cohort-card {
+  padding: 30px 32px;
+}
+
+.students-cohort-card h2,
+.subject-performance h2,
+.profile-attendance-card h2,
+.profile-bottom-grid h2 {
+  font-size: 24px;
+}
+
+.students-table {
+  font-size: 16px;
+}
+
+.students-table th {
+  height: 58px;
+  color: #59616d;
+  font-size: 12px;
+}
+
+.students-table td {
+  height: 78px;
+  font-size: 16px;
+}
+
+.students-avatar {
+  width: 44px;
+  height: 44px;
+  font-size: 16px;
+}
+
+.students-identity strong,
+.students-status,
+.students-profile-btn,
+.students-show-all {
+  font-size: 15px;
+}
+
+.students-identity small {
+  color: #59616d;
+  font-size: 12px;
+}
+
+.students-status {
+  min-width: 88px;
+  min-height: 30px;
+}
+
+.students-profile-btn,
+.students-show-all {
+  min-height: 42px;
+}
+
+.profile-back-btn,
+.profile-actions button {
+  min-height: 52px;
+  border-radius: 12px;
+  font-size: 15px;
+}
+
+.profile-back-btn svg,
+.profile-actions svg {
+  width: 22px;
+  height: 22px;
+}
+
+.profile-header {
+  margin-bottom: 32px;
+}
+
+.profile-avatar {
+  width: 76px;
+  height: 76px;
+  font-size: 26px;
+}
+
+.profile-identity small {
+  font-size: 15px;
+}
+
+.profile-summary-grid,
+.profile-main-grid,
+.profile-bottom-grid {
+  gap: 28px;
+}
+
+.profile-summary-card {
+  min-height: 150px;
+  padding: 28px 30px;
+}
+
+.profile-tag {
+  min-height: 30px;
+  font-size: 12px;
+}
+
+.profile-summary-card p {
+  font-size: 16px;
+}
+
+.profile-summary-card strong {
+  font-size: 44px;
+}
+
+.subject-performance,
+.profile-attendance-card,
+.profile-feedback-card,
+.growth-card {
+  padding: 30px 32px;
+}
+
+.subject-performance th,
+.subject-performance td {
+  height: 62px;
+  font-size: 15px;
+}
+
+.subject-performance th {
+  color: #59616d;
+  font-size: 12px;
+}
+
+.subject-performance td span {
+  min-width: 48px;
+  min-height: 30px;
+  font-size: 14px;
+}
+
+.profile-attendance-card div strong {
+  font-size: 56px;
+}
+
+.profile-attendance-card div small,
+.profile-attendance-card dt,
+.profile-feedback-card small,
+.growth-card strong,
+.growth-card p {
+  font-size: 13px;
+}
+
+.profile-attendance-card dd {
+  font-size: 30px;
+}
+
+.feedback-quote {
+  font-size: 38px;
+}
+
+.profile-feedback-card p {
+  font-size: 16px;
+}
+
+.growth-thumb {
+  width: 72px;
+  height: 72px;
+}
+
+.edit-grades-modal,
+.feedback-modal {
+  width: min(860px, calc(100vw - var(--sidebar-width, 220px) - 72px));
+  border-radius: 24px;
+  padding: 34px 36px 0;
+}
+
+.edit-grades-close,
+.feedback-modal-close {
+  width: 40px;
+  height: 40px;
+  font-size: 18px;
+}
+
+.edit-grades-header h2,
+.feedback-modal-header h2 {
+  font-size: 28px;
+}
+
+.edit-grades-header p,
+.feedback-modal-header p {
+  font-size: 15px;
+}
+
+.edit-grades-table th {
+  height: 48px;
+  font-size: 12px;
+}
+
+.edit-grades-table td {
+  height: 64px;
+  font-size: 16px;
+}
+
+.edit-grades-table td span {
+  min-height: 30px;
+  font-size: 14px;
+}
+
+.edit-grades-summary {
+  min-height: 118px;
+  padding: 24px 28px;
+}
+
+.edit-grades-summary p {
+  font-size: 12px;
+}
+
+.edit-grades-summary strong {
+  font-size: 38px;
+}
+
+.edit-grades-summary strong span {
+  font-size: 12px;
+}
+
+.edit-grades-footer,
+.feedback-modal-footer {
+  margin-inline: -36px;
+  padding: 22px 36px;
+}
+
+.edit-grades-footer button,
+.feedback-modal-footer button {
+  min-width: 130px;
+  min-height: 48px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.feedback-recipient {
+  min-height: 78px;
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+
+.feedback-recipient-avatar {
+  width: 46px;
+  height: 46px;
+  font-size: 16px;
+}
+
+.feedback-recipient small,
+.feedback-content > span:first-child,
+.feedback-tags p {
+  font-size: 13px;
+}
+
+.feedback-recipient strong,
+.feedback-content textarea {
+  font-size: 16px;
+}
+
+.feedback-content textarea {
+  min-height: 180px;
+  border-radius: 14px;
+}
+
+.feedback-content-icons svg {
+  width: 20px;
+  height: 20px;
+}
+
+.feedback-tags span,
+.feedback-tags button {
+  min-height: 30px;
+  padding: 0 14px;
+  font-size: 12px;
+}
+
 @media (max-width: 980px) {
   .teacher-students-page {
     padding: 24px;
