@@ -1,11 +1,10 @@
 import { createContext } from 'react';
-import type { AppUser, AttendanceRecord, ClassAnalytics, Grade, GradePayload, GradeUpdatePayload, MessageResponse, RegistrationPayload, TeacherAssignment, UserRole } from '../types';
+import type { AppUser, ClassAnalytics, Grade, GradePayload, GradeUpdatePayload, MessageResponse, RegistrationPayload, TeacherAssignment, UserRole } from '../types';
 
 export type AuthContextValue = {
   user: AppUser | null;
   users: AppUser[];
   grades: Grade[];
-  attendance: AttendanceRecord[];
   teacherAssignments: TeacherAssignment[];
   classAnalytics: ClassAnalytics | null;
   loading: boolean;
@@ -16,6 +15,7 @@ export type AuthContextValue = {
   editGrade: (gradeId: number, gradeData: GradeUpdatePayload) => Promise<Grade>;
   register: (registrationData: RegistrationPayload) => Promise<AppUser>;
   requestPasswordReset: (identifier: string, role: UserRole) => Promise<MessageResponse>;
+  updateProfilePicture: (profilePicture: string) => Promise<AppUser>;
   reloadData: () => Promise<void>;
 };
 

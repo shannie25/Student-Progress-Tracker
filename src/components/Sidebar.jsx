@@ -1,12 +1,18 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import UserAvatar from './UserAvatar';
+import { getInitials } from '../utils/avatar';
 import { formatName } from '../utils/formatName';
+import { resizeProfileImage } from '../utils/profilePhoto';
 
 const Sidebar = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, updateProfilePicture } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState('');
 
   const handleLogout = () => {
     const confirmed = window.confirm('Log out of ClassIQ? You will return to the login screen.');
@@ -19,18 +25,41 @@ const Sidebar = () => {
     navigate('/');
   };
 
-  const initials = user?.name
-    ? user.name
-        .split(' ')
-        .map((part) => part[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase()
-    : 'U';
+  const initials = getInitials(user?.name, 'U');
   const displayName = formatName(user?.name) || 'Crist Bland';
   const roleLabel = user?.role
     ? user.role.charAt(0).toUpperCase() + user.role.slice(1)
     : 'ClassID';
+  const canUploadProfilePicture = ['teacher', 'student'].includes(user?.role);
+  const sidebarNameSize = displayName.length > 24
+    ? '10px'
+    : displayName.length > 18
+      ? '11px'
+      : displayName.length > 14
+        ? '12px'
+        : '14px';
+
+  const handleProfilePictureChange = async (event) => {
+    const file = event.target.files?.[0];
+
+    if (!file || !user || !canUploadProfilePicture) {
+      return;
+    }
+
+    try {
+      setIsUploadingPhoto(true);
+      setPhotoError('');
+      const profilePicture = await resizeProfileImage(file);
+      await updateProfilePicture(profilePicture);
+    } catch (error) {
+      setPhotoError(error instanceof Error ? error.message : 'Profile picture could not be saved.');
+    } finally {
+      setIsUploadingPhoto(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
 
   const adminNavItems = [
     { to: '/dashboard', label: 'Dashboard' },
@@ -44,7 +73,6 @@ const Sidebar = () => {
     { to: '/dashboard', label: 'Dashboard' },
     { to: '/add-grades', label: user?.role === 'teacher' ? 'Classes' : 'Grades' },
     { to: '/students', label: 'Students', visible: user?.role === 'teacher' },
-    { to: '/attendance', label: 'Attendance', visible: user?.role !== 'teacher' },
     { to: '/grades-management', label: 'Grades', visible: user?.role === 'teacher' },
     { to: '/generate-report', label: 'Reports' },
   ];
@@ -64,12 +92,21 @@ const Sidebar = () => {
       </div>
 
       <div className="sidebar-profile">
-        <div className="sidebar-avatar">{initials}</div>
-        <div>
-          <p className="sidebar-name">{displayName}</p>
+        {canUploadProfilePicture ? (
+          <label className={`sidebar-avatar-upload${isUploadingPhoto ? ' uploading' : ''}`} title="Upload profile picture">
+            <UserAvatar user={user} className="sidebar-avatar" fallback={initials} />
+            <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleProfilePictureChange} disabled={isUploadingPhoto} />
+            <span className="sidebar-avatar-edit-label">{isUploadingPhoto ? '...' : 'Change'}</span>
+          </label>
+        ) : (
+          <UserAvatar user={user} className="sidebar-avatar" fallback={initials} />
+        )}
+        <div className="sidebar-profile-info">
+          <p className="sidebar-name" style={{ '--sidebar-name-size': sidebarNameSize }}>{displayName}</p>
           <p className="sidebar-id">{roleLabel}</p>
         </div>
       </div>
+      {photoError && <p className="sidebar-upload-error">{photoError}</p>}
 
       <nav className="sidebar-nav">
         {navItems

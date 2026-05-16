@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+
 :root {
   --text: #6b6375;
   --text-h: #08060d;
@@ -11,9 +13,12 @@
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --sans: 'Manrope', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --heading: 'Manrope', system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
+  --site-zoom: 0.94;
+  --site-zoom-width: 106.39vw;
+  --site-zoom-height: 106.39dvh;
 
   font: 18px/145% var(--sans);
   letter-spacing: 0.18px;
@@ -59,14 +64,16 @@ body {
 }
 
 #root {
-  width: 100%;
-  height: 100%;
+  width: var(--site-zoom-width);
+  height: var(--site-zoom-height);
   margin: 0;
   padding: 0;
   text-align: center;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  transform: scale(var(--site-zoom));
+  transform-origin: top left;
 }
 
 h1,
@@ -123,4 +130,12 @@ input::-webkit-credentials-auto-fill-button {
   display: none !important;
   visibility: hidden;
   pointer-events: none;
+}
+
+@media (max-width: 768px) {
+  :root {
+    --site-zoom: 1;
+    --site-zoom-width: 100vw;
+    --site-zoom-height: 100dvh;
+  }
 }

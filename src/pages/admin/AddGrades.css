@@ -1,6 +1,6 @@
 .grades-management-page {
   flex: 1;
-  min-height: calc(100vh - 60px);
+  min-height: calc(var(--site-zoom-height, 100vh) - 60px);
   overflow-y: auto;
   background: #e6ebf2;
   padding: 28px 48px 36px;
@@ -25,7 +25,7 @@
 .grades-management-header h1 {
   color: #050505;
   font-size: 24px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.1;
   margin: 0;
 }
@@ -53,7 +53,7 @@
   background: #ffffff;
   color: #050505;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -93,7 +93,7 @@
 .grades-filter-bar span {
   color: #777d86;
   font-size: 9px;
-  font-weight: 900;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
@@ -104,7 +104,7 @@
   border: 0;
   border-radius: 5px;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
   box-sizing: border-box;
 }
 
@@ -147,7 +147,7 @@
   background: #f1f1f2;
   color: #777d86;
   font-size: 9px;
-  font-weight: 900;
+  font-weight: 700;
   text-align: left;
   text-transform: uppercase;
 }
@@ -157,7 +157,7 @@
   padding: 0 20px;
   border-bottom: 1px solid #edf0f4;
   color: #050505;
-  font-weight: 900;
+  font-weight: 700;
   vertical-align: middle;
 }
 
@@ -184,7 +184,7 @@
   padding: 24px 28px;
   color: #050505;
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.45;
   text-align: left;
   white-space: normal;
@@ -200,7 +200,7 @@
   background: #1d6b57;
   color: #ffffff;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .grades-student-info {
@@ -212,7 +212,7 @@
 .grades-student-info strong {
   color: #050505;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   margin-bottom: 4px;
   white-space: nowrap;
@@ -221,7 +221,7 @@
 .grades-student-info small {
   color: #858585;
   font-size: 8px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -239,7 +239,7 @@
   background: #e7f4e8;
   color: #16813b;
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .grades-letter.low {
@@ -257,7 +257,7 @@
   background: #f1f1f2;
   color: #777d86;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .grades-pagination {
@@ -277,7 +277,7 @@
   background: transparent;
   color: #062749;
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -304,7 +304,7 @@
 .grades-summary-card p {
   color: inherit;
   font-size: 9px;
-  font-weight: 900;
+  font-weight: 700;
   margin: 0 0 24px;
   text-align: right;
   text-transform: uppercase;
@@ -322,7 +322,7 @@
 .grades-summary-card small {
   color: inherit;
   font-size: 9px;
-  font-weight: 800;
+  font-weight: 600;
   opacity: 0.72;
 }
 
@@ -353,8 +353,11 @@
 }
 
 .add-grades-modal {
+  display: flex;
+  flex-direction: column;
   width: min(500px, calc(100vw - 48px));
-  overflow: hidden;
+  max-height: calc(var(--site-zoom-height, 100dvh) - 48px);
+  overflow-y: auto;
   border-radius: 28px;
   background: #ffffff;
   color: #050505;
@@ -375,7 +378,7 @@
 .add-grades-modal-header h2 {
   color: #050505;
   font-size: 14px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   margin: 0;
 }
@@ -391,7 +394,7 @@
   background: transparent;
   color: #050505;
   font-size: 14px;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -409,7 +412,7 @@
   display: block;
   color: #777d86;
   font-size: 9px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   margin: 0 0 10px;
   text-transform: uppercase;
@@ -433,7 +436,7 @@
   background-repeat: no-repeat;
   color: #050505;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .score-entry-table {
@@ -457,7 +460,7 @@
 .score-entry-head span {
   color: #777d86;
   font-size: 8px;
-  font-weight: 900;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
@@ -479,7 +482,7 @@
 .score-entry-row span {
   color: #050505;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .score-entry-row span:last-child {
@@ -524,7 +527,7 @@
 .grade-result-panel small {
   color: #ffffff;
   font-size: 7px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   opacity: 0.9;
   text-transform: uppercase;
@@ -533,11 +536,14 @@
 .grade-result-panel strong {
   color: #ffffff;
   font-size: 9px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
 }
 
 .add-grades-modal-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -545,6 +551,7 @@
   margin-top: 20px;
   padding: 18px 32px 16px;
   background: #f1f1f2;
+  box-sizing: border-box;
 }
 
 .add-grades-validation-message {
@@ -561,7 +568,7 @@
   background: transparent;
   color: #050505;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -576,7 +583,7 @@
 }
 
 .grades-management-page {
-  min-height: calc(100dvh - var(--topbar-height, 72px));
+  min-height: calc(var(--site-zoom-height, 100dvh) - var(--topbar-height, 72px));
   padding: clamp(30px, 3vw, 52px);
 }
 
@@ -873,5 +880,11 @@
   .add-grades-modal-actions {
     padding-left: 20px;
     padding-right: 20px;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .add-grades-modal-actions button {
+    flex: 1 1 130px;
   }
 }

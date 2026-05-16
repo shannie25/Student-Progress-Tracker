@@ -1,7 +1,7 @@
 .class-report-page {
   flex: 1;
   width: 100%;
-  min-height: calc(100vh - var(--topbar-height, 72px));
+  min-height: calc(var(--site-zoom-height, 100vh) - var(--topbar-height, 72px));
   min-width: 0;
   overflow-y: auto;
   box-sizing: border-box;
@@ -29,7 +29,7 @@
   margin: 0;
   color: #050505;
   font-size: 24px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -52,7 +52,7 @@
   background: #ffffff;
   color: #050505;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -106,7 +106,7 @@
   margin: 0;
   color: #062749;
   font-size: 17px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.08;
 }
 
@@ -120,7 +120,7 @@
   margin-bottom: 8px;
   color: #777d86;
   font-size: 8px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   text-transform: uppercase;
 }
@@ -140,7 +140,7 @@
   background-repeat: no-repeat;
   color: #777d86;
   font-size: 8px;
-  font-weight: 800;
+  font-weight: 600;
   box-sizing: border-box;
 }
 
@@ -164,7 +164,7 @@
   margin: 0 0 18px;
   color: #050505;
   font-size: 25px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.05;
 }
 
@@ -196,7 +196,7 @@
   margin-bottom: 16px;
   color: inherit;
   font-size: 8px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   text-transform: uppercase;
   opacity: 0.95;
@@ -214,7 +214,7 @@
 .passing-rate-card small {
   color: inherit;
   font-size: 8px;
-  font-weight: 900;
+  font-weight: 700;
   opacity: 0.9;
 }
 
@@ -234,7 +234,7 @@
   margin: 0;
   color: #050505;
   font-size: 16px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -253,7 +253,7 @@
 .distribution-row > span {
   color: #050505;
   font-size: 14px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .distribution-track {
@@ -292,16 +292,18 @@
   background: rgba(255, 255, 255, 0.88);
   color: #062749;
   font-size: 8px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   white-space: nowrap;
   transform: translateY(-50%);
 }
 
 .grade-registry-card {
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   border-radius: 8px;
   background: #ffffff;
+  -webkit-overflow-scrolling: touch;
 }
 
 .grade-registry-card h3 {
@@ -314,6 +316,7 @@
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
+  min-width: 680px;
 }
 
 .grade-registry-card th,
@@ -323,7 +326,7 @@
   border-bottom: 1px solid #edf0f4;
   color: #050505;
   font-size: 9px;
-  font-weight: 900;
+  font-weight: 700;
   text-align: left;
   text-transform: uppercase;
 }
@@ -344,12 +347,36 @@
 
 .grade-registry-card td:nth-child(2),
 .grade-registry-card th:nth-child(2) {
-  width: 34%;
+  width: 36%;
 }
 
 .grade-registry-card td:nth-child(3),
 .grade-registry-card th:nth-child(3) {
   width: 16%;
+}
+
+.grade-registry-card td:nth-child(4),
+.grade-registry-card th:nth-child(4) {
+  width: 14%;
+}
+
+.grade-registry-card td:nth-child(5),
+.grade-registry-card th:nth-child(5) {
+  width: 22%;
+  padding-right: 18px;
+}
+
+.grade-registry-card td:nth-child(3),
+.grade-registry-card th:nth-child(3),
+.grade-registry-card td:nth-child(4),
+.grade-registry-card th:nth-child(4) {
+  text-align: center;
+}
+
+.grade-registry-card td:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .registry-avatar,
@@ -363,7 +390,7 @@
   background: #1d6b57;
   color: #ffffff;
   font-size: 8px;
-  font-weight: 900;
+  font-weight: 700;
   vertical-align: middle;
 }
 
@@ -383,7 +410,28 @@
   color: #bd0f1c;
 }
 
+.registry-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 78px;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #062749;
+  font-size: 13px;
+  font-weight: 700;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.registry-feedback-status {
+  line-height: 1.35;
+}
+
 .status-warning {
+  background: #ffd6d9;
   color: #bd0f1c !important;
 }
 
@@ -394,7 +442,7 @@
   background: #eeeeef;
   color: #062749;
   font-size: 9px;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -460,7 +508,8 @@
   box-sizing: border-box;
 }
 
-.performers-card article + article {
+.performers-card article + article,
+.improvement-card article + article {
   margin-top: 13px;
 }
 
@@ -476,7 +525,7 @@
 .improvement-card strong {
   color: #050505;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.12;
 }
 
@@ -485,15 +534,30 @@
   color: #9c0aa0;
   font-size: 8px;
   font-style: normal;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .improvement-card em {
   color: #bd0f1c;
 }
 
+.improvement-empty {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #bd0f1c;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  box-sizing: border-box;
+}
+
 .admin-report-page {
-  height: calc(100dvh - var(--topbar-height, 72px));
+  height: calc(var(--site-zoom-height, 100dvh) - var(--topbar-height, 72px));
   padding: 28px 46px 48px;
   background: #e6ebf2;
 }
@@ -573,7 +637,7 @@
   margin: 0;
   color: #050505;
   font-size: 14px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -587,7 +651,7 @@
   margin-bottom: 7px;
   color: #8a919c;
   font-size: 9px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   text-transform: uppercase;
 }
@@ -606,7 +670,7 @@
   background-repeat: no-repeat;
   color: #777d86;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .admin-report-config button {
@@ -622,7 +686,7 @@
   background: #062749;
   color: #ffffff;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -676,7 +740,7 @@
   margin: 0;
   color: #050505;
   font-size: 20px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .admin-directory-table {
@@ -692,7 +756,7 @@
   border-bottom: 1px solid #dfe3e8;
   color: #050505;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   text-align: left;
   vertical-align: middle;
 }
@@ -701,7 +765,7 @@
   height: 34px;
   color: #7d858f;
   font-size: 9px;
-  font-weight: 900;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
@@ -714,7 +778,7 @@
   background: #6ed481;
   color: #ffffff;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .admin-subject-list {
@@ -734,7 +798,7 @@
   background: #f0f1f3;
   color: #062749;
   font-size: 9px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .admin-directory-footer {
@@ -745,7 +809,7 @@
   padding: 0 28px;
   color: #777d86;
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .admin-directory-footer div {
@@ -764,7 +828,7 @@
   background: transparent;
   color: #062749;
   font-size: 16px;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -793,7 +857,7 @@
   margin: 0;
   color: #062749;
   font-size: 25px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -801,7 +865,7 @@
   margin: 3px 0 15px;
   color: #40546a;
   font-size: 9px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .admin-sync-row {
@@ -811,7 +875,7 @@
   gap: 12px;
   color: #062749;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .admin-sync-track {
@@ -886,7 +950,7 @@
 .class-report-header h1,
 .class-report-main > h2 {
   font-size: clamp(32px, 2.6vw, 40px);
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .admin-report-layout {
@@ -1180,4 +1244,39 @@
   .class-report-side {
     padding-top: 24px;
   }
+}
+
+/* Readability update */
+.report-filter-card label span,
+.report-stat-grid span,
+.passing-rate-card span,
+.report-stat-grid small,
+.passing-rate-card small,
+.distribution-count,
+.grade-registry-card > button,
+.performers-card em,
+.improvement-card em {
+  font-size: 13px;
+}
+
+.class-report-actions button,
+.report-filter-card button,
+.report-filter-card select,
+.admin-report-config select,
+.admin-report-config button,
+.admin-directory-footer span,
+.admin-directory-footer button {
+  font-size: 15px;
+}
+
+.grade-registry-card th,
+.admin-directory-table th {
+  font-size: 13px;
+}
+
+.grade-registry-card td,
+.admin-directory-table td,
+.performers-card strong,
+.improvement-card strong {
+  font-size: 15px;
 }

@@ -4,6 +4,7 @@ import Header from '../components/Header';
 import Layout from '../components/Layout';
 import { LoadingSpinner, StatusMessage } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
+import { useStatusToast } from '../hooks/useNotifications';
 import studentIcons from '../assets/icon.png';
 import type { UserRole } from '../types';
 
@@ -77,6 +78,8 @@ const RoleLogin = ({
   const [successMessage, setSuccessMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  useStatusToast(error, 'error', 'Login issue');
+  useStatusToast(successMessage, 'success', 'Request sent');
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -224,21 +227,21 @@ const styles: Record<string, CSSProperties> = {
   container: { display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' },
   card: { background: 'white', padding: '56px 52px', borderRadius: '22px', boxShadow: '0 18px 40px rgba(15,23,42,0.08)', width: '100%', maxWidth: '520px' },
   header: { textAlign: 'center', marginBottom: '34px' },
-  title: { margin: '0', fontSize: '32px', color: '#111827', fontWeight: '800', lineHeight: '1.15' },
+  title: { margin: '0', fontSize: '32px', color: '#111827', fontWeight: '700', lineHeight: '1.15' },
   subtitle: { color: '#4b5563', fontSize: '17px', marginTop: '12px', lineHeight: '1.35' },
   form: { display: 'flex', flexDirection: 'column', gap: '24px' },
   inputGroup: { display: 'flex', flexDirection: 'column', gap: '11px' },
-  label: { fontSize: '17px', fontWeight: '700', color: '#1f2937' },
+  label: { fontSize: '17px', fontWeight: '500', color: '#1f2937' },
   input: { minHeight: '58px', padding: '0 20px', backgroundColor: '#e5e7eb', border: 'none', borderRadius: '14px', fontSize: '18px', outline: 'none', color: '#111827', caretColor: '#111827', WebkitTextFillColor: '#111827', boxSizing: 'border-box' },
   passwordWrapper: { position: 'relative', width: '100%' },
   passwordInput: { width: '100%', minHeight: '58px', padding: '0 58px 0 20px', backgroundColor: '#e5e7eb', border: 'none', borderRadius: '14px', fontSize: '18px', outline: 'none', boxSizing: 'border-box', color: '#111827', caretColor: '#111827', WebkitTextFillColor: '#111827' },
   eyeIconButton: { position: 'absolute', right: '18px', top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', display: 'flex', border: 'none', background: 'transparent', padding: '4px' },
   formOptions: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', fontSize: '16px' },
   rememberLabel: { display: 'flex', alignItems: 'center', gap: '10px', fontSize: '16px', color: '#1f2937', cursor: 'pointer' },
-  forgotButton: { alignSelf: 'flex-end', background: 'transparent', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '16px', fontWeight: '700', padding: '0' },
+  forgotButton: { alignSelf: 'flex-end', background: 'transparent', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '16px', fontWeight: '500', padding: '0' },
   signUpText: { display: 'flex', justifyContent: 'center', width: '100%', marginTop: '22px', color: '#1f2937', fontSize: '16px' },
-  signUpLink: { color: '#2563eb', textDecoration: 'none', fontWeight: '700' },
-  button: { minHeight: '58px', padding: '0 18px', borderRadius: '14px', border: 'none', color: 'white', fontSize: '17px', fontWeight: 'bold', cursor: 'pointer', marginTop: '12px' },
+  signUpLink: { color: '#2563eb', textDecoration: 'none', fontWeight: '600' },
+  button: { minHeight: '58px', padding: '0 18px', borderRadius: '14px', border: 'none', color: 'white', fontSize: '17px', fontWeight: '600', cursor: 'pointer', marginTop: '12px' },
   errorBox: { color: '#b91c1c', backgroundColor: '#fef2f2', padding: '14px', borderRadius: '10px', textAlign: 'center', marginBottom: '18px', border: '1px solid #fecaca', fontSize: '15px' },
 };
 

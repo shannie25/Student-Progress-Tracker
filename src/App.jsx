@@ -9,7 +9,6 @@ import StudentGrades from './pages/StudentGrades';
 import AddGrades from './pages/admin/AddGrades';
 import ManageUsers from './pages/admin/ManageUsers';
 import GenerateReport from './pages/shared/GenerateReport';
-import Attendance from './pages/Attendance';
 import TeacherStudents from './pages/TeacherStudents';
 import TeacherStudentProfile from './pages/TeacherStudentProfile';
 import StudentLogin from './pages/StudentLogin';
@@ -72,7 +71,6 @@ const AppRoutes = () => {
           <Route path="/students" element={user?.role === 'teacher' ? <TeacherStudents /> : <Navigate to="/dashboard" />} />
           <Route path="/students/:studentId" element={user?.role === 'teacher' ? <TeacherStudentProfile /> : <Navigate to="/dashboard" />} />
           <Route path="/grades-management" element={user?.role === 'teacher' ? <AddGrades /> : <Navigate to="/dashboard" />} />
-          <Route path="/attendance" element={<Attendance />} />
           <Route path="/manage-users" element={user?.role === 'admin' ? <ManageUsers /> : <Navigate to="/dashboard" />} />
           <Route path="/generate-report" element={<GenerateReport />} />
           <Route path="/" element={<Navigate to="/dashboard" />} />

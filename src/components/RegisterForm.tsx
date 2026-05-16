@@ -2,6 +2,7 @@ import { useState, type ChangeEvent, type FormEvent } from 'react';
 import { useLocation } from 'react-router-dom';
 import { PASSWORD_REQUIREMENTS } from '../constants/app';
 import { useAuth } from '../hooks/useAuth';
+import { useStatusToast } from '../hooks/useNotifications';
 import { LoadingSpinner, StatusMessage } from './ui';
 
 type RegistrationRole = 'student' | 'teacher';
@@ -52,6 +53,8 @@ const RegisterForm = ({ onBackToLogin }: RegisterFormProps) => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  useStatusToast(error, 'error', 'Registration issue');
+  useStatusToast(success, 'success', 'Account created');
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;

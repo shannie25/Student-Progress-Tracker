@@ -5,6 +5,10 @@ export type AppUser = {
   email: string;
   name: string;
   role: UserRole;
+  course?: string;
+  schoolYear?: string;
+  semester?: string;
+  profilePicture?: string;
 };
 
 export type Grade = {
@@ -63,13 +67,6 @@ export type PasswordResetPayload = {
 
 export type MessageResponse = {
   message: string;
-};
-
-export type AttendanceRecord = {
-  id: number;
-  studentId: string;
-  date: string;
-  status: 'present' | 'absent' | 'late';
 };
 
 export type ClassAnalytics = {

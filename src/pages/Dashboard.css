@@ -1,7 +1,7 @@
 .dashboard-container {
   flex: 1;
   width: 100%;
-  height: calc(100dvh - var(--topbar-height, 72px));
+  height: calc(var(--site-zoom-height, 100dvh) - var(--topbar-height, 72px));
   min-height: 0;
   overflow-y: auto;
   background: #e6ebf2;
@@ -13,7 +13,7 @@
 .dashboard-header h1 {
   color: #050505;
   font-size: 24px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.1;
   letter-spacing: 0;
   margin: 0 0 16px;
@@ -21,7 +21,7 @@
 
 .admin-dashboard {
   color: #050505;
-  height: calc(100dvh - var(--topbar-height, 72px));
+  height: calc(var(--site-zoom-height, 100dvh) - var(--topbar-height, 72px));
   padding: clamp(18px, 2vw, 28px) clamp(22px, 2.5vw, 36px);
 }
 
@@ -29,7 +29,7 @@
   margin: 0 0 clamp(16px, 2vw, 24px);
   color: #050505;
   font-size: clamp(21px, 2vw, 24px);
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.1;
 }
 
@@ -81,7 +81,7 @@
   display: block;
   color: #050505;
   font-size: clamp(22px, 2.3vw, 25px);
-  font-weight: 900;
+  font-weight: 700;
   line-height: 0.95;
   margin-bottom: 5px;
 }
@@ -89,7 +89,7 @@
 .admin-stat-card small {
   color: #6f767f;
   font-size: 8px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -131,7 +131,7 @@
   margin: 0;
   color: #050505;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -141,7 +141,7 @@
   background: transparent;
   color: #062749;
   font-size: 8px;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -183,7 +183,7 @@
   overflow: hidden;
   color: #050505;
   font-size: 9px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -193,7 +193,7 @@
   overflow: hidden;
   color: #6f767f;
   font-size: 7px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -203,7 +203,7 @@
   color: #6f767f;
   font-size: 7px;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -220,7 +220,7 @@
   background: #ffffff;
   color: #050505;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -252,7 +252,7 @@
 
 .admin-add-user-modal {
   width: min(420px, calc(100vw - 48px));
-  max-height: calc(100dvh - 48px);
+  max-height: calc(var(--site-zoom-height, 100dvh) - 48px);
   overflow-y: auto;
   padding: 32px 26px 28px;
   border: 0;
@@ -261,6 +261,10 @@
   color: #050505;
   box-shadow: 0 18px 46px rgba(15, 23, 42, 0.12);
   box-sizing: border-box;
+}
+
+.admin-course-modal {
+  width: min(560px, calc(100vw - 48px));
 }
 
 .admin-modal-icon {
@@ -276,7 +280,7 @@
   margin: 0 0 22px;
   color: #050505;
   font-size: 22px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   text-align: center;
 }
@@ -291,14 +295,28 @@
   margin-bottom: 13px;
 }
 
-.admin-add-user-modal label span {
+.admin-add-user-modal label span,
+.admin-course-schedule-field > span {
   display: block;
   margin-bottom: 6px;
   color: #7b828c;
   font-size: 7px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   text-transform: uppercase;
+}
+
+.admin-course-schedule-field {
+  margin-bottom: 13px;
+}
+
+.admin-add-user-modal .course-schedule-builder input,
+.admin-add-user-modal .course-schedule-builder select {
+  height: 38px;
+  border: 1px solid #cbd5d1;
+  border-radius: 8px;
+  background: #ffffff;
+  font-size: 14px;
 }
 
 .admin-add-user-modal input,
@@ -311,7 +329,7 @@
   background: #f1f1f2;
   color: #111827;
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 600;
   box-sizing: border-box;
 }
 
@@ -331,7 +349,7 @@
   min-height: 38px;
   border-radius: 5px;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -407,7 +425,7 @@
   right: 18px;
   color: #1957ff;
   font-size: 7px;
-  font-weight: 900;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
@@ -418,7 +436,7 @@
 .teacher-stat-value {
   color: inherit;
   font-size: 30px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 0.9;
   margin: 0 0 7px;
 }
@@ -426,7 +444,7 @@
 .teacher-stat-label {
   color: #737b86;
   font-size: 9px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1;
   margin: 0;
 }
@@ -466,7 +484,7 @@
 .teacher-list-section h2 {
   color: #050505;
   font-size: 14px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.1;
   margin: 0;
 }
@@ -477,7 +495,7 @@
   background: #e9edf4;
   color: #9aa1ac;
   font-size: 9px;
-  font-weight: 900;
+  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -510,7 +528,7 @@
 .grade-letter {
   color: #707782;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -532,7 +550,7 @@
   max-width: 240px;
   color: #52606f;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.5;
   margin: 0 0 20px;
 }
@@ -545,7 +563,7 @@
   background: #9d93f5;
   color: #12284a;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -582,11 +600,11 @@
   place-items: center;
   width: 28px;
   height: 28px;
-  border-radius: 9px;
+  border-radius: 50%;
   background: #1d6b57;
   color: #ffffff;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .teacher-student-info,
@@ -599,7 +617,7 @@
 .teacher-student-info strong {
   color: #050505;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   margin-bottom: 4px;
 }
@@ -607,7 +625,7 @@
 .teacher-student-info small {
   color: #7b838d;
   font-size: 9px;
-  font-weight: 700;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -620,14 +638,14 @@
 .teacher-student-score strong {
   color: #07345f;
   font-size: 22px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 0.9;
 }
 
 .teacher-student-score small {
   color: #07345f;
   font-size: 7px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   margin-top: 4px;
   text-transform: uppercase;
@@ -636,6 +654,21 @@
 .teacher-student-score-risk strong,
 .teacher-student-score-risk small {
   color: #ff1010;
+}
+
+.teacher-student-empty {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #59616d;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  box-sizing: border-box;
 }
 
 .stats-grid {
@@ -663,7 +696,7 @@
 .metric-label {
   color: #777d86;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1;
   letter-spacing: 0;
   margin: 0 0 6px;
@@ -672,7 +705,7 @@
 .stat-value {
   color: #050505;
   font-size: 29px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 0.9;
   margin: 0;
 }
@@ -702,7 +735,7 @@
 .feedback-section h2 {
   color: #050505;
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.1;
   letter-spacing: 0;
   margin: 0 0 14px;
@@ -718,7 +751,7 @@
 .grades-table th {
   color: #818791;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
   text-align: left;
   text-transform: uppercase;
   padding: 0 0 9px;
@@ -756,7 +789,7 @@
 .subject-name {
   color: #050505;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.2;
   margin-bottom: 4px;
 }
@@ -771,7 +804,7 @@
 .view-link {
   color: #1957ff;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
   text-decoration: none;
 }
 
@@ -815,7 +848,7 @@ button.view-link {
 
 .history-item strong {
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .history-item small {
@@ -865,7 +898,7 @@ button.view-link {
 .metric-value {
   color: #050505;
   font-size: 14px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   margin: 0;
 }
@@ -898,7 +931,7 @@ button.view-link {
 
 .feedback-text {
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.5;
   margin: 0 0 9px;
 }
@@ -908,7 +941,7 @@ button.view-link {
   align-items: center;
   gap: 8px;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
   margin: 0;
 }
 
@@ -948,7 +981,7 @@ button.view-link {
   background: #ffffff;
   color: #050505;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   cursor: pointer;
   text-align: left;
@@ -1195,7 +1228,7 @@ button.view-link {
 .admin-dashboard-header h1 {
   margin-bottom: 28px;
   font-size: clamp(32px, 2.7vw, 40px);
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .admin-stats-grid,
@@ -1381,7 +1414,7 @@ button.view-link {
 .teacher-student-avatar {
   width: 46px;
   height: 46px;
-  border-radius: 14px;
+  border-radius: 50%;
   font-size: 16px;
 }
 
@@ -1503,7 +1536,7 @@ button.view-link {
   background: #eef2f7;
   color: #050505;
   font-size: 16px;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -1511,14 +1544,14 @@ button.view-link {
   margin: 0 0 8px;
   color: #050505;
   font-size: 30px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .teacher-review-modal > p {
   margin: 0 0 24px;
   color: #59616d;
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .teacher-review-list {
@@ -1537,13 +1570,13 @@ button.view-link {
 .teacher-review-list strong {
   color: #062749;
   font-size: 16px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .teacher-review-list span {
   color: #4b5563;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.45;
 }
 
@@ -1561,7 +1594,7 @@ button.view-link {
   background: #ffffff;
   color: #050505;
   font-size: 15px;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -1573,7 +1606,7 @@ button.view-link {
 
 @media (max-width: 980px) {
   .dashboard-container {
-    min-height: calc(100vh - var(--topbar-height, 72px));
+    min-height: calc(var(--site-zoom-height, 100vh) - var(--topbar-height, 72px));
     padding: 24px;
   }
 
@@ -1659,12 +1692,70 @@ button.view-link {
     content: attr(data-label);
     color: #818791;
     font-size: 10px;
-    font-weight: 900;
+    font-weight: 700;
     text-transform: uppercase;
   }
 
   .subject-cell {
     display: block !important;
     text-align: left !important;
+  }
+}
+
+/* Readability update */
+.admin-stat-card small,
+.admin-card-header button,
+.admin-activity-item small,
+.admin-activity-item em,
+.teacher-stat-label,
+.teacher-student-info small,
+.teacher-student-score small,
+.stat-card h3,
+.metric-label,
+.history-item small,
+.feedback-teacher,
+.teacher-review-list span {
+  font-size: 13px;
+}
+
+.admin-card-header h2,
+.admin-actions-card h2,
+.teacher-card h2,
+.teacher-list-section h2,
+.card h2,
+.feedback-section h2 {
+  font-size: 20px;
+}
+
+.admin-actions-card button,
+.teacher-insight-card button,
+.teacher-review-actions button,
+button.view-link {
+  font-size: 15px;
+}
+
+.grades-table {
+  font-size: 15px;
+}
+
+.grades-table th {
+  font-size: 13px;
+}
+
+.grades-table td,
+.subject-name,
+.professor-name,
+.feedback-text {
+  font-size: 15px;
+}
+
+.metric-value,
+.stat-value {
+  font-size: clamp(28px, 2.3vw, 36px);
+}
+
+@media (max-width: 720px) {
+  .grades-table td::before {
+    font-size: 11px;
   }
 }

@@ -1,7 +1,8 @@
 import React, { useMemo, useRef, useState } from 'react';
-import html2pdf from 'html2pdf.js';
 import { useAuth } from '../hooks/useAuth';
+import { useStatusToast } from '../hooks/useNotifications';
 import { LoadingSpinner, StatusMessage } from '../components/ui';
+import { exportStructuredPdf } from '../utils/pdfExport';
 import './StudentGrades.css';
 
 const getLetterGrade = (score = 0) => {
@@ -27,6 +28,8 @@ const StudentGrades = () => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  useStatusToast(statusMessage, 'success', 'Report ready');
+  useStatusToast(errorMessage, 'error', 'Download issue');
 
   const studentGrades = useMemo(() => grades.filter((grade) => grade.studentId === user.id), [grades, user.id]);
   const studentAssignments = useMemo(() => teacherAssignments.filter((assignment) => assignment.studentId === user.id), [teacherAssignments, user.id]);
@@ -64,6 +67,7 @@ const StudentGrades = () => {
   const displayRows = [...displayGrades, ...displayAssignedRows];
   const averageScore = getAverage(displayGrades);
   const cumulativeGpa = displayGrades.length ? (averageScore / 25).toFixed(1) : '0.0';
+  const academicStatus = displayGrades.length ? (averageScore >= 75 ? 'Passed' : 'At Risk') : 'No Grades';
   const activeSubjects = new Set(displayRows.map((row) => row.subject)).size;
   const selectedGrade = displayRows[0];
   const gradeHistory = Object.values(studentGrades.reduce((groups, grade) => {
@@ -89,25 +93,49 @@ const StudentGrades = () => {
   };
 
   const handleDownloadReport = async () => {
-    if (!reportRef.current) {
-      setErrorMessage('Your report is not ready yet. Please try again in a moment.');
-      return;
-    }
-
     try {
       setIsDownloading(true);
       setStatusMessage('');
       setErrorMessage('');
-      await html2pdf()
-        .set({
-          margin: 8,
-          filename: `Grade_Report_${user.id}.pdf`,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2 },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        })
-        .from(reportRef.current)
-        .save();
+      exportStructuredPdf({
+        filename: `Grade_Report_${user.id}.pdf`,
+        title: `Grade Report - ${user.name}`,
+        subtitle: 'Student academic summary generated from recorded grade data.',
+        meta: [
+          { label: 'Student ID', value: user.id },
+          { label: 'School Year', value: selectedSchoolYear },
+          { label: 'Semester', value: selectedSemester },
+        ],
+        summary: [
+          { label: 'Cumulative GPA', value: cumulativeGpa },
+          { label: 'Active Subjects', value: activeSubjects },
+          { label: 'Academic Status', value: academicStatus },
+        ],
+        sections: [
+          {
+            title: 'Subject Grades',
+            columns: [
+              { header: 'Subject', accessor: 'subject', width: 1.3 },
+              { header: 'Score', accessor: (grade) => (grade.isAssignedOnly ? 'Not graded yet' : `${Number(grade.score).toFixed(1)}/100`), width: 0.8 },
+              { header: 'Grade', accessor: (grade) => (grade.isAssignedOnly ? 'Pending' : getLetterGrade(Number(grade.score))), width: 0.7 },
+              { header: 'Feedback', accessor: (grade) => grade.feedback || 'No feedback yet', width: 1.6 },
+            ],
+            rows: displayRows,
+            emptyMessage: 'No subjects match the selected term.',
+          },
+          {
+            title: 'Grade History',
+            columns: [
+              { header: 'School Year', accessor: 'schoolYear' },
+              { header: 'Semester', accessor: 'semester' },
+              { header: 'Term', accessor: 'term' },
+              { header: 'GPA', accessor: (item) => (item.average / 25).toFixed(1) },
+            ],
+            rows: gradeHistory,
+            emptyMessage: 'No grade history yet.',
+          },
+        ],
+      });
       setStatusMessage('Your grade report downloaded successfully.');
     } catch {
       setErrorMessage('We could not download your report. Please try again.');
@@ -160,7 +188,7 @@ const StudentGrades = () => {
               </section>
               <section className="grade-stat-card status-card">
                 <h2>Academic Status</h2>
-                <p>{averageScore >= 75 || displayGrades.length === 0 ? 'Passed' : 'At Risk'}</p>
+                <p>{academicStatus}</p>
               </section>
             </div>
 

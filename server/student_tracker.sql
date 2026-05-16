@@ -43,6 +43,9 @@ CREATE TABLE IF NOT EXISTS courses (
   code        VARCHAR(40)  NOT NULL UNIQUE,
   name        VARCHAR(120) NOT NULL,
   description VARCHAR(255) DEFAULT '',
+  schedule    VARCHAR(255) DEFAULT '',
+  school_year VARCHAR(20)  NOT NULL DEFAULT '2025-2026',
+  semester    VARCHAR(40)  NOT NULL DEFAULT '1st Semester',
   teacher_id  VARCHAR(40),
   created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (teacher_id) REFERENCES users(id)
@@ -89,11 +92,12 @@ CREATE TABLE IF NOT EXISTS attendance (
 
 CREATE TABLE IF NOT EXISTS grade_scales (
   id          INT AUTO_INCREMENT PRIMARY KEY,
-  label       VARCHAR(20) NOT NULL,
+  label       VARCHAR(20) NOT NULL UNIQUE,
   min_score   DECIMAL(5,2) NOT NULL,
   max_score   DECIMAL(5,2) NOT NULL,
   description VARCHAR(255) DEFAULT '',
-  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+  created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY unique_grade_scale_range (min_score, max_score)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS audit_log (

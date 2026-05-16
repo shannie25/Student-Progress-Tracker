@@ -1,8 +1,18 @@
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { StatusMessage } from '../components/ui';
+import UserAvatar from '../components/UserAvatar';
 import { useAuth } from '../hooks/useAuth';
+import { useStatusToast } from '../hooks/useNotifications';
+import { exportStructuredPdf } from '../utils/pdfExport';
 import './TeacherStudents.css';
+
+const getLetterGrade = (score = 0) => {
+  if (score >= 90) return 'A';
+  if (score >= 80) return 'B';
+  if (score >= 75) return 'C';
+  return 'F';
+};
 
 const TeacherStudentProfile = () => {
   const navigate = useNavigate();
@@ -12,18 +22,19 @@ const TeacherStudentProfile = () => {
   const [showAddFeedback, setShowAddFeedback] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  useStatusToast(successMessage, 'success', 'Student profile updated');
+  useStatusToast(errorMessage, 'error', 'Student profile issue');
   const student = users.find((currentUser) => currentUser.id === studentId) || {
     id: studentId || '2024-0015',
     name: 'Alessa Arong',
   };
   const studentGrades = grades.filter((grade) => grade.studentId === student.id);
-  const displayGrades = studentGrades.length > 0
-    ? studentGrades
-    : [
-        { id: 0, subject: 'Math', score: 95, feedback: 'Excellent performance across subjects.' },
-        { id: -1, subject: 'English', score: 89, feedback: 'Strong writing progress.' },
-      ];
-  const averageScore = Math.round(displayGrades.reduce((total, grade) => total + Number(grade.score || 0), 0) / displayGrades.length);
+  const displayGrades = studentGrades;
+  const hasGrades = displayGrades.length > 0;
+  const averageScore = hasGrades
+    ? Math.round(displayGrades.reduce((total, grade) => total + Number(grade.score || 0), 0) / displayGrades.length)
+    : 0;
+  const academicStatus = hasGrades ? (averageScore >= 75 ? 'Passed' : 'At Risk') : 'No Grades';
   const primaryGrade = studentGrades[0];
 
   const handleSaveGrades = async () => {
@@ -68,6 +79,44 @@ const TeacherStudentProfile = () => {
     }
   };
 
+  const handleExportReport = () => {
+    try {
+      setSuccessMessage('');
+      setErrorMessage('');
+      exportStructuredPdf({
+        filename: `Student_Profile_${student.id}.pdf`,
+        title: `Student Profile - ${student.name}`,
+        subtitle: 'Academic profile generated from recorded grade data.',
+        meta: [
+          { label: 'Student ID', value: student.id },
+          { label: 'Status', value: academicStatus },
+        ],
+        summary: [
+          { label: 'Current Class', value: 'Assigned' },
+          { label: 'Average Score', value: hasGrades ? `${averageScore}%` : 'No Grades' },
+          { label: 'Standing', value: academicStatus },
+        ],
+        sections: [
+          {
+            title: 'Subject Performance',
+            columns: [
+              { header: 'Subject', accessor: 'subject', width: 1.4 },
+              { header: 'Instructor', accessor: (grade) => grade.teacherId || 'Assigned teacher', width: 1.2 },
+              { header: 'Score', accessor: (grade) => `${Number(grade.score).toFixed(1)}/100`, width: 0.7 },
+              { header: 'Grade', accessor: (grade) => getLetterGrade(Number(grade.score)), width: 0.6 },
+              { header: 'Feedback', accessor: (grade) => grade.feedback || 'No feedback yet', width: 1.5 },
+            ],
+            rows: displayGrades,
+            emptyMessage: 'No grade records yet.',
+          },
+        ],
+      });
+      setSuccessMessage('Student profile report downloaded successfully.');
+    } catch {
+      setErrorMessage('We could not export this student profile. Please try again.');
+    }
+  };
+
   return (
     <div className="student-profile-page">
       <button type="button" className="profile-back-btn" onClick={() => navigate('/students')} aria-label="Back to students">
@@ -79,7 +128,7 @@ const TeacherStudentProfile = () => {
 
       <div className="profile-header">
         <div className="profile-identity">
-          <span className="profile-avatar">{student.name?.[0] || 'S'}</span>
+          <UserAvatar user={student} className="profile-avatar" fallback="S" />
           <span>
             <strong>{student.name}</strong>
             <small>ID: {student.id}</small>
@@ -100,7 +149,7 @@ const TeacherStudentProfile = () => {
             </svg>
             Add Feedback
           </button>
-          <button type="button" className="profile-export-btn">
+          <button type="button" className="profile-export-btn" onClick={handleExportReport}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 3v12" />
               <path d="m7 10 5 5 5-5" />
@@ -121,14 +170,14 @@ const TeacherStudentProfile = () => {
           <strong>Assigned</strong>
         </section>
         <section className="profile-summary-card">
-          <span className="profile-tag">Top 5%</span>
+          <span className="profile-tag">{hasGrades ? 'Recorded' : 'Pending'}</span>
           <p>Avg Score</p>
-          <strong>{averageScore || 0} %</strong>
+          <strong>{hasGrades ? `${averageScore} %` : '--'}</strong>
         </section>
         <section className="profile-summary-card">
-          <span className="profile-tag standing">Standing</span>
+          <span className={`profile-tag standing ${!hasGrades ? 'pending' : averageScore < 75 ? 'risk' : ''}`.trim()}>Standing</span>
           <p>Status</p>
-          <strong>{averageScore >= 75 || displayGrades.length === 0 ? 'Passed' : 'At Risk'}</strong>
+          <strong>{academicStatus}</strong>
         </section>
       </div>
 
@@ -150,27 +199,32 @@ const TeacherStudentProfile = () => {
                   <td>{grade.subject}</td>
                   <td>{grade.teacherId || 'Assigned teacher'}</td>
                   <td>{Number(grade.score).toFixed(1)}</td>
-                  <td><span>{Number(grade.score) >= 90 ? 'A' : Number(grade.score) >= 80 ? 'B' : Number(grade.score) >= 75 ? 'C' : 'F'}</span></td>
+                  <td><span>{getLetterGrade(Number(grade.score))}</span></td>
                 </tr>
               ))}
+              {displayGrades.length === 0 && (
+                <tr>
+                  <td colSpan="4">No grade records yet.</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </section>
 
         <section className="profile-attendance-card">
-          <h2>Attendance</h2>
+          <h2>Grade Snapshot</h2>
           <div>
-            <strong>92 %</strong>
-            <small>Rate</small>
+            <strong>{hasGrades ? `${averageScore} %` : '--'}</strong>
+            <small>Average</small>
           </div>
           <dl>
             <span>
-              <dt>Present</dt>
-              <dd>92</dd>
+              <dt>Passing</dt>
+              <dd>{displayGrades.filter((grade) => Number(grade.score) >= 75).length}</dd>
             </span>
             <span>
-              <dt>Absent</dt>
-              <dd>8</dd>
+              <dt>Needs Work</dt>
+              <dd>{displayGrades.filter((grade) => Number(grade.score) < 75).length}</dd>
             </span>
           </dl>
         </section>
@@ -189,10 +243,10 @@ const TeacherStudentProfile = () => {
         <section>
           <h2>Growth Insight</h2>
           <div className="growth-card">
-            <span className="growth-thumb">A</span>
+            <UserAvatar user={student} className="growth-thumb" fallback="S" />
             <div>
               <strong>Projected Milestone</strong>
-              <p>Based on current scores, {student.name} is {averageScore >= 75 ? 'on track' : 'marked for follow-up'} this semester.</p>
+              <p>{hasGrades ? `Based on current scores, ${student.name} is ${averageScore >= 75 ? 'on track' : 'marked for follow-up'} this semester.` : `${student.name} has no recorded grades yet.`}</p>
             </div>
           </div>
         </section>
@@ -232,13 +286,13 @@ const TeacherStudentProfile = () => {
             <div className="edit-grades-summary">
               <div>
                 <p>Cumulative Total</p>
-                <strong>{averageScore || 0} %</strong>
+                <strong>{hasGrades ? `${averageScore} %` : 'N/A'}</strong>
               </div>
               <div>
                 <p>Letter Grade</p>
                 <strong>
-                  A
-                  <span>Excellent</span>
+                  {hasGrades ? getLetterGrade(averageScore) : 'N/A'}
+                  {hasGrades && <span>{averageScore >= 90 ? 'Excellent' : averageScore >= 75 ? 'Passing' : 'Needs Work'}</span>}
                 </strong>
               </div>
             </div>
@@ -264,7 +318,7 @@ const TeacherStudentProfile = () => {
             </header>
 
             <div className="feedback-recipient">
-              <span className="feedback-recipient-avatar">{student.name?.[0] || 'S'}</span>
+              <UserAvatar user={student} className="feedback-recipient-avatar" fallback="S" />
               <span>
                 <small>Recipient</small>
                 <strong>{student.name}</strong>

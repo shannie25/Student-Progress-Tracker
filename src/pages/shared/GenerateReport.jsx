@@ -1,7 +1,8 @@
 import React, { useRef, useState } from 'react';
-import html2pdf from 'html2pdf.js';
 import { LoadingSpinner, StatusMessage } from '../../components/ui';
 import { useAuth } from '../../hooks/useAuth';
+import { useStatusToast } from '../../hooks/useNotifications';
+import { exportStructuredPdf } from '../../utils/pdfExport';
 import './GenerateReport.css';
 
 const getLetterGrade = (score = 0) => {
@@ -24,7 +25,7 @@ const getAverageScore = (grades) => {
 const formatPercent = (value) => `${Math.max(0, Math.min(100, Math.round(value)))}%`;
 
 const GenerateReport = () => {
-  const { user, grades, users, attendance, teacherAssignments } = useAuth();
+  const { user, grades, users, teacherAssignments } = useAuth();
   const reportRef = useRef(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
@@ -33,6 +34,8 @@ const GenerateReport = () => {
   const [selectedSemester, setSelectedSemester] = useState('All');
   const [selectedSchoolYear, setSelectedSchoolYear] = useState('All');
   const [selectedReportType, setSelectedReportType] = useState('Class Summary');
+  useStatusToast(statusMessage, 'success', 'Report updated');
+  useStatusToast(errorMessage, 'error', 'Report issue');
   const isStudentReport = user.role === 'student';
   const reportBaseGrades = isStudentReport ? grades.filter((grade) => grade.studentId === user.id) : grades;
   const subjectOptions = [...new Set(reportBaseGrades.map((grade) => grade.subject).filter(Boolean))].sort();
@@ -66,11 +69,11 @@ const GenerateReport = () => {
     };
   }).sort((left, right) => right.average - left.average);
   const registryRows = isStudentReport
-    ? (reportGrades.length > 0 ? reportGrades : [{ id: 0, subject: 'No grades yet', score: 0, feedback: 'No feedback yet' }]).map((grade, index) => ({
+    ? (reportGrades.length > 0 ? reportGrades : [{ id: 0, subject: 'No grades yet', score: null, feedback: 'No grade records available.', isPending: true }]).map((grade, index) => ({
         rank: `#${index + 1}`,
         name: grade.subject,
-        score: Number(grade.score || 0).toFixed(2),
-        grade: getLetterGrade(grade.score),
+        score: grade.isPending ? '--' : Number(grade.score || 0).toFixed(2),
+        grade: grade.isPending ? 'Pending' : getLetterGrade(grade.score),
         status: grade.feedback || 'No feedback yet',
       }))
     : studentAverages.map((student, index) => ({
@@ -78,7 +81,7 @@ const GenerateReport = () => {
         name: student.name,
         score: Number(student.average || 0).toFixed(2),
         grade: getLetterGrade(student.average),
-        status: student.average < 75 ? 'Warning' : student.feedback || 'Recorded',
+        status: student.average < 75 ? 'Warning' : 'Recorded',
       }));
   const distributionCounts = reportGrades.reduce((counts, grade) => {
     const letter = getLetterGrade(Number(grade.score || 0)).charAt(0);
@@ -94,7 +97,10 @@ const GenerateReport = () => {
     danger: grade === 'F',
   }));
   const topPerformers = studentAverages.slice(0, 2);
-  const bottomPerformers = studentAverages.slice(-1);
+  const needsImprovementStudents = studentAverages
+    .filter((student) => student.average < 75)
+    .sort((left, right) => left.average - right.average)
+    .slice(0, 2);
   const reportTitle = isStudentReport
     ? `Student Report: ${user.name}`
     : user.role === 'teacher'
@@ -142,20 +148,6 @@ const GenerateReport = () => {
       finalScore: average ? `${formatPercent(average)} (${getLetterGrade(average)})` : 'N/A',
     };
   });
-  const adminAttendanceRows = adminStudentRows.map((student) => {
-    const studentAttendance = attendance.filter((record) => record.studentId === student.id);
-    const present = studentAttendance.filter((record) => record.status === 'present' || record.status === 'late').length;
-    const absent = studentAttendance.filter((record) => record.status === 'absent').length;
-    const rate = studentAttendance.length ? (present / studentAttendance.length) * 100 : 0;
-
-    return {
-      id: student.id,
-      name: student.name,
-      present,
-      absent,
-      rate: formatPercent(rate),
-    };
-  });
   const adminCourseRows = Object.values(teacherAssignments.reduce((groups, assignment) => {
     const courseName = assignment.course || (selectedSubject !== 'All' ? selectedSubject : 'BSIT');
     const group = groups[courseName] || {
@@ -195,13 +187,6 @@ const GenerateReport = () => {
       headers: ['Name', 'Quiz Avg', 'Midterm', 'Final', 'Final Score'],
       rows: adminGradeRows,
     },
-    'Attendance Records': {
-      title: 'Student Performance',
-      empty: 'No attendance records match the selected report filters.',
-      countLabel: 'students',
-      headers: ['Student', 'Present', 'Absent', 'Attendance Rate'],
-      rows: adminAttendanceRows,
-    },
     'Courses & Subjects': {
       title: 'Courses & Subject',
       empty: 'No courses or subjects match the selected report filters.',
@@ -216,6 +201,8 @@ const GenerateReport = () => {
   const activeAdminReport = adminReportConfig[adminReportType] || adminReportConfig['All Teachers'];
   const adminVisibleRows = activeAdminReport.rows.slice(0, 2);
   const syncPercent = reportGrades.length ? '99.8%' : '0%';
+  const studentAcademicStatus = reportGrades.length ? (averageScore >= 75 ? getLetterGrade(averageScore) : 'At Risk') : 'No Grades';
+  const passingRate = reportGrades.length ? `${Math.round((reportGrades.filter((grade) => Number(grade.score) >= 75).length / reportGrades.length) * 100)}%` : '0%';
 
   const handlePrint = () => {
     window.print();
@@ -241,26 +228,126 @@ const GenerateReport = () => {
   };
 
   const handleDownloadPDF = async () => {
-    const element = reportRef.current;
-
-    if (!element) {
-      setErrorMessage('The report is not ready yet. Please try again in a moment.');
-      return;
-    }
-
-    const options = {
-      margin: 8,
-      filename: `${isStudentReport ? 'Student' : 'Class'}_Report_${user.id}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
-    };
-
     try {
       setIsDownloading(true);
       setStatusMessage('');
       setErrorMessage('');
-      await html2pdf().set(options).from(element).save();
+      if (user.role === 'admin') {
+        const adminPdfRows = activeAdminReport.rows.map((row) => {
+          if (adminReportType === 'All Teachers') {
+            return {
+              facultyId: row.id,
+              name: row.name,
+              subject: row.subject,
+              course: row.course,
+              status: row.status,
+            };
+          }
+
+          if (adminReportType === 'Student Grades') {
+            return {
+              name: row.name,
+              quiz: row.quiz,
+              midterm: row.midterm,
+              final: row.final,
+              finalScore: row.finalScore,
+            };
+          }
+
+          return {
+            course: row.course,
+            subjects: row.subjects,
+            teacher: row.teacher,
+          };
+        });
+        const adminPdfColumns = adminReportType === 'All Teachers'
+          ? [
+              { header: 'Faculty ID', accessor: 'facultyId', width: 0.8 },
+              { header: 'Name', accessor: 'name', width: 1.2 },
+              { header: 'Subject', accessor: 'subject', width: 1 },
+              { header: 'Course', accessor: 'course', width: 0.8 },
+              { header: 'Status', accessor: 'status', width: 0.7 },
+            ]
+          : adminReportType === 'Student Grades'
+            ? [
+                { header: 'Name', accessor: 'name', width: 1.4 },
+                { header: 'Quiz Avg', accessor: 'quiz' },
+                { header: 'Midterm', accessor: 'midterm' },
+                { header: 'Final', accessor: 'final' },
+                { header: 'Final Score', accessor: 'finalScore', width: 1.2 },
+              ]
+            : [
+                { header: 'Course', accessor: 'course', width: 1 },
+                { header: 'Subjects', accessor: 'subjects', width: 1.6 },
+                { header: 'Teacher', accessor: 'teacher', width: 1.4 },
+              ];
+
+        exportStructuredPdf({
+          filename: `Admin_Report_${user.id}.pdf`,
+          title: activeAdminReport.title,
+          subtitle: `${adminReportType} report generated from system records.`,
+          orientation: 'landscape',
+          meta: [
+            { label: 'Report Type', value: adminReportType },
+            { label: 'Program', value: selectedSubject === 'All' ? 'BSIT' : selectedSubject },
+            { label: 'Semester', value: selectedSemester === 'All' ? '1st Semester' : selectedSemester },
+            { label: 'School Year', value: selectedSchoolYear === 'All' ? '2024 - 2025' : selectedSchoolYear },
+          ],
+          summary: [
+            { label: 'Records', value: activeAdminReport.rows.length },
+            { label: 'System Health', value: syncPercent },
+            { label: 'Last Sync', value: 'Current session' },
+          ],
+          sections: [
+            {
+              title: activeAdminReport.title,
+              columns: adminPdfColumns,
+              rows: adminPdfRows,
+              emptyMessage: activeAdminReport.empty,
+            },
+          ],
+        });
+      } else {
+        exportStructuredPdf({
+          filename: `${isStudentReport ? 'Student' : 'Class'}_Report_${user.id}.pdf`,
+          title: reportTitle,
+          subtitle: `${selectedReportType} generated from recorded grades.`,
+          orientation: 'landscape',
+          meta: [
+            { label: 'Subject', value: selectedSubject },
+            { label: 'Semester', value: selectedSemester },
+            { label: 'School Year', value: selectedSchoolYear },
+          ],
+          summary: [
+            { label: isStudentReport ? 'Subjects' : 'Total Students', value: isStudentReport ? reportGrades.length : totalStudents },
+            { label: 'Average Score', value: `${averageScore}%` },
+            { label: isStudentReport ? 'Academic Status' : 'Passing Rate', value: isStudentReport ? studentAcademicStatus : passingRate },
+          ],
+          sections: [
+            {
+              title: isStudentReport ? 'My Subject Grades' : 'Detailed Grade Registry',
+              columns: [
+                { header: 'Rank', accessor: 'rank', width: 0.5 },
+                { header: isStudentReport ? 'Subject' : 'Name', accessor: 'name', width: 1.5 },
+                { header: 'Score', accessor: 'score', width: 0.8 },
+                { header: 'Grade', accessor: 'grade', width: 0.7 },
+                { header: 'Status', accessor: 'status', width: 1.4 },
+              ],
+              rows: registryRows,
+              emptyMessage: 'No grade records match the selected filters.',
+            },
+            {
+              title: 'Grade Distribution',
+              columns: [
+                { header: 'Grade', accessor: 'grade' },
+                { header: 'Count', accessor: 'count' },
+                { header: 'Label', accessor: 'label' },
+              ],
+              rows: distributionRows,
+            },
+          ],
+        });
+      }
       setStatusMessage('PDF report downloaded successfully.');
     } catch {
       setErrorMessage('We could not download the PDF. Please try again.');
@@ -274,9 +361,9 @@ const GenerateReport = () => {
       ? activeAdminReport.rows.map((row) => ({
           rank: row.id || row.name || row.course,
           name: row.name || row.course,
-          score: row.subject || row.quiz || row.present || (Array.isArray(row.subjects) ? row.subjects.join(', ') : ''),
-          grade: row.course || row.midterm || row.absent || row.teacher || '',
-          status: row.status || row.finalScore || row.rate || '',
+          score: row.subject || row.quiz || (Array.isArray(row.subjects) ? row.subjects.join(', ') : ''),
+          grade: row.course || row.midterm || row.teacher || '',
+          status: row.status || row.finalScore || '',
         }))
       : registryRows;
     const tableRows = exportRows.map((row) => `
@@ -356,7 +443,6 @@ const GenerateReport = () => {
               <select value={adminReportType} onChange={(event) => setSelectedReportType(event.target.value)}>
                 <option>All Teachers</option>
                 <option>Student Grades</option>
-                <option>Attendance Records</option>
                 <option>Courses & Subjects</option>
               </select>
             </label>
@@ -440,14 +526,6 @@ const GenerateReport = () => {
                           <td>{row.midterm}</td>
                           <td>{row.final}</td>
                           <td>{row.finalScore}</td>
-                        </>
-                      )}
-                      {adminReportType === 'Attendance Records' && (
-                        <>
-                          <td>{row.name}</td>
-                          <td>{row.present}</td>
-                          <td>{row.absent}</td>
-                          <td><span className="admin-directory-status">{row.rate}</span></td>
                         </>
                       )}
                       {adminReportType === 'Courses & Subjects' && (
@@ -647,7 +725,13 @@ const GenerateReport = () => {
                     </td>
                     <td>{row.score}</td>
                     <td><span className={`registry-grade ${row.grade.includes('C') ? 'warning' : ''}`}>{row.grade}</span></td>
-                    <td className={row.status === 'Warning' ? 'status-warning' : ''}>{row.status}</td>
+                    {isStudentReport ? (
+                      <td className="registry-feedback-status">{row.status}</td>
+                    ) : (
+                      <td>
+                        <span className={`registry-status ${row.status === 'Warning' ? 'status-warning' : ''}`}>{row.status}</span>
+                      </td>
+                    )}
                   </tr>
                 ))}
                 {registryRows.length === 0 && (
@@ -664,7 +748,7 @@ const GenerateReport = () => {
         <aside className="class-report-side">
           <section className="passing-rate-card">
             <span>{isStudentReport ? 'Academic Status' : 'Passing Rate'}</span>
-            <strong>{isStudentReport ? getLetterGrade(averageScore) : `${reportGrades.length ? Math.round((reportGrades.filter((grade) => Number(grade.score) >= 75).length / reportGrades.length) * 100) : 0}%`}</strong>
+            <strong>{isStudentReport ? studentAcademicStatus : passingRate}</strong>
             <small>{isStudentReport ? 'Current standing' : 'Target Met'}</small>
           </section>
 
@@ -684,13 +768,17 @@ const GenerateReport = () => {
 
           <section className="improvement-card">
             <h3>Needs<br />Improvement</h3>
-            {(bottomPerformers.length ? bottomPerformers : [{ name: 'No records', average: 0 }]).map((student) => (
-              <article key={student.name}>
-                <span className="side-avatar">{student.name[0]}</span>
-                <strong>{student.name}</strong>
-                <em>{student.average}%</em>
-              </article>
-            ))}
+            {needsImprovementStudents.length > 0 ? (
+              needsImprovementStudents.map((student) => (
+                <article key={student.name}>
+                  <span className="side-avatar">{student.name[0]}</span>
+                  <strong>{student.name}</strong>
+                  <em>{student.average}%</em>
+                </article>
+              ))
+            ) : (
+              <p className="improvement-empty">All students are currently passing.</p>
+            )}
           </section>
         </aside>
       </div>

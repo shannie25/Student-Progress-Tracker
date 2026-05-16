@@ -1,4 +1,5 @@
 import React from 'react';
+import UserAvatar from '../components/UserAvatar';
 import './TeacherGradesManagement.css';
 
 const TeacherGradesManagement = () => {
@@ -74,7 +75,7 @@ const TeacherGradesManagement = () => {
             {rows.map((row) => (
               <tr key={row.name}>
                 <td>
-                  <span className="grades-student-avatar">{row.name[0]}</span>
+                  <UserAvatar name={row.name} className="grades-student-avatar" fallback="S" />
                   <span className="grades-student-info">
                     <strong>{row.name}</strong>
                     <small>ID : {row.id}</small>

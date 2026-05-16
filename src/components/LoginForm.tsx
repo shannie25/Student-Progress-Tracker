@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useStatusToast } from '../hooks/useNotifications';
 import { LoadingSpinner, StatusMessage } from './ui';
 
 type LoginFormProps = {
@@ -27,6 +28,8 @@ const LoginForm = ({ onRegister }: LoginFormProps) => {
   const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  useStatusToast(error, 'error', 'Login issue');
+  useStatusToast(successMessage, 'success', 'Request sent');
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;

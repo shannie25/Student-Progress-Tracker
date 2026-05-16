@@ -1,27 +1,35 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import UserAvatar from '../components/UserAvatar';
 import { formatName } from '../utils/formatName';
 import './TeacherStudents.css';
 
 const TeacherStudents = () => {
   const navigate = useNavigate();
-  const { users, grades } = useAuth();
+  const { user, users, grades, teacherAssignments } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [studentGroup, setStudentGroup] = useState('Assigned');
-  const assignedStudents = users.filter((user) => user.role === 'student');
+  const teacherStudentIds = new Set(teacherAssignments.filter((assignment) => assignment.teacherId === user.id).map((assignment) => assignment.studentId));
+  const assignedStudents = users.filter((currentUser) => currentUser.role === 'student' && teacherStudentIds.has(currentUser.id));
   const students = assignedStudents.map((student) => {
         const studentGrades = grades.filter((grade) => grade.studentId === student.id);
-        const averageScore = studentGrades.length > 0
+        const studentSubjects = teacherAssignments
+          .filter((assignment) => assignment.teacherId === user.id && assignment.studentId === student.id)
+          .map((assignment) => assignment.subject);
+        const className = Array.from(new Set(studentSubjects)).join(', ') || 'Assigned';
+        const hasGrades = studentGrades.length > 0;
+        const averageScore = hasGrades
           ? Math.round(studentGrades.reduce((total, grade) => total + Number(grade.score || 0), 0) / studentGrades.length)
           : 0;
 
         return {
           name: student.name,
           id: student.id,
-          className: 'Assigned',
-          score: `${averageScore || '--'} /100`,
-          status: averageScore && averageScore < 75 ? 'At Risk' : 'Passing',
+          profilePicture: student.profilePicture,
+          className,
+          score: hasGrades ? `${averageScore} /100` : '-- /100',
+          status: hasGrades ? (averageScore < 75 ? 'At Risk' : 'Passing') : 'No Grades',
         };
       });
   const filteredStudents = useMemo(() => {
@@ -81,7 +89,7 @@ const TeacherStudents = () => {
             {filteredStudents.map((student) => (
               <tr key={student.id}>
                 <td data-label="Student Identity">
-                  <span className="students-avatar">{student.name[0]}</span>
+                  <UserAvatar user={student} className="students-avatar" fallback="S" />
                   <span className="students-identity">
                     <strong>{formatName(student.name)}</strong>
                     <small>ID : {student.id}</small>
@@ -90,7 +98,7 @@ const TeacherStudents = () => {
                 <td data-label="Class">{student.className}</td>
                 <td data-label="Avg Score">{student.score}</td>
                 <td data-label="Academic Status">
-                  <span className={`students-status ${student.status === 'At Risk' ? 'risk' : ''}`}>
+                  <span className={`students-status ${student.status === 'At Risk' ? 'risk' : student.status === 'No Grades' ? 'pending' : ''}`}>
                     {student.status}
                   </span>
                 </td>

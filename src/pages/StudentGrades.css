@@ -1,6 +1,6 @@
 .grades-page {
   flex: 1;
-  min-height: calc(100vh - 60px);
+  min-height: calc(var(--site-zoom-height, 100vh) - 60px);
   box-sizing: border-box;
   overflow-y: auto;
   background: #e6ebf2;
@@ -23,7 +23,7 @@
 .grades-toolbar h1 {
   color: #050505;
   font-size: 25px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   letter-spacing: 0;
   margin: 8px 0 0;
@@ -50,7 +50,7 @@
   background: #f5f7fa;
   color: #707780;
   font-size: 9px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   text-transform: uppercase;
 }
@@ -63,7 +63,7 @@
   background: #d6dce5;
   color: #202124;
   font-size: 15px;
-  font-weight: 900;
+  font-weight: 700;
   padding: 13px 34px 8px 16px;
   outline: none;
 }
@@ -104,7 +104,7 @@
 .grade-stat-card h2 {
   color: #7c828b;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   letter-spacing: 0;
   margin: 0 0 7px;
@@ -113,7 +113,7 @@
 .grade-stat-card p {
   color: #050505;
   font-size: 31px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 0.95;
   margin: 0;
 }
@@ -150,7 +150,7 @@
 .student-grades-table th {
   color: #8b9098;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
   text-align: left;
   text-transform: uppercase;
 }
@@ -158,7 +158,7 @@
 .student-grades-table td {
   color: #050505;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .student-grades-table th:nth-child(1),
@@ -191,13 +191,13 @@
   background: #e6e8eb;
   color: #050505;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .academic-journey h2 {
   color: #050505;
   font-size: 16px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0;
   margin: 22px 0 12px;
 }
@@ -221,7 +221,7 @@
   display: block;
   color: #8b9098;
   font-size: 9px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   text-transform: uppercase;
 }
@@ -230,7 +230,7 @@
   display: block;
   color: #050505;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.2;
   margin-top: 4px;
 }
@@ -242,7 +242,7 @@
   transform: translateY(-50%);
   color: #050505;
   font-size: 16px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .subject-detail-card {
@@ -252,7 +252,7 @@
 .subject-detail-card h2 {
   color: #050505;
   font-size: 17px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0;
   margin: 0 0 18px;
 }
@@ -269,19 +269,19 @@
   gap: 16px;
   color: #666d76;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .activity-table div:first-child {
   color: #858b94;
   font-size: 9px;
-  font-weight: 900;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
 .activity-table strong {
   color: #1957ff;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .teacher-note {
@@ -294,7 +294,7 @@
 .teacher-note h3 {
   color: #050505;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
   margin: 0 0 20px;
   text-align: center;
   text-transform: uppercase;
@@ -303,7 +303,7 @@
 .teacher-note p {
   color: #050505;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.7;
 }
 
@@ -327,7 +327,7 @@
   border: 0;
   border-radius: 8px;
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -360,7 +360,7 @@
 }
 
 .grades-page {
-  min-height: calc(100dvh - var(--topbar-height, 72px));
+  min-height: calc(var(--site-zoom-height, 100dvh) - var(--topbar-height, 72px));
   padding: clamp(30px, 3vw, 52px);
 }
 
@@ -544,4 +544,33 @@
   .grades-table-card {
     overflow-x: auto;
   }
+}
+
+/* Readability update */
+.grades-filters label span,
+.journey-list small,
+.activity-table div:first-child {
+  font-size: 13px;
+}
+
+.grades-filters select,
+.grades-table-card,
+.teacher-note p,
+.journey-list strong,
+.activity-table div,
+.grades-actions button {
+  font-size: 15px;
+}
+
+.grade-stat-card h2 {
+  font-size: 15px;
+}
+
+.student-grades-table th {
+  font-size: 13px;
+}
+
+.student-grades-table td,
+.student-grades-table td span {
+  font-size: 15px;
 }

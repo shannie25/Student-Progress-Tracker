@@ -7,6 +7,9 @@ export type UserPayload = {
   email: string;
   role: AppUser['role'];
   password?: string;
+  course?: string;
+  schoolYear?: string;
+  semester?: string;
 };
 
 export const createUser = (userData: UserPayload & { password: string }) => {

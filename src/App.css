@@ -1,15 +1,16 @@
 /*whole background*/
 .App {
   background-color: #BFC9EE;
-  height: 100vh;
+  height: var(--site-zoom-height, 100vh);
+  width: var(--site-zoom-width, 100vw);
   display: flex;
   flex-direction: column;
-  font-family: Arial, sans-serif;
+  font-family: var(--sans);
 }
 
 .app-loading,
 .app-error-state {
-  min-height: 100vh;
+  min-height: var(--site-zoom-height, 100vh);
   display: grid;
   place-items: center;
   gap: 14px;
@@ -50,8 +51,8 @@
   box-sizing: border-box;
   padding: 11px 13px;
   border-radius: 8px;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 600;
   line-height: 1.35;
   text-align: left;
 }
@@ -74,11 +75,170 @@
   border: 1px solid #bfdbfe;
 }
 
+.centered-status-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.22);
+  box-sizing: border-box;
+}
+
+.centered-status-card {
+  width: min(420px, calc(100vw - 48px));
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 18px;
+  padding: 28px 26px 24px;
+  background: #ffffff;
+  color: #111827;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.2);
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.centered-status-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.centered-status-card-success .centered-status-icon {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.centered-status-card-error .centered-status-icon {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.centered-status-card h2 {
+  margin: 0 0 8px;
+  color: #111827;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.centered-status-card p {
+  margin: 0;
+  color: #4b5563;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.centered-status-card button {
+  min-width: 112px;
+  min-height: 40px;
+  margin-top: 20px;
+  border: 0;
+  border-radius: 8px;
+  background: #062749;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 .button-content {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+}
+
+.user-avatar {
+  overflow: hidden;
+  border-radius: 50%;
+}
+
+.user-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+.toast-viewport {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 2000;
+  display: grid;
+  gap: 12px;
+  width: min(420px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.toast-notification {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.18);
+  background: #ffffff;
+  color: #111827;
+  pointer-events: auto;
+}
+
+.toast-success {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.toast-error {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.toast-info {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.toast-notification-body {
+  min-width: 0;
+  flex: 1;
+  text-align: left;
+}
+
+.toast-notification-body strong {
+  display: block;
+  margin: 0 0 6px;
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.toast-notification-body p {
+  color: #334155;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.toast-close {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: #475569;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
 }
 
 button:disabled,
@@ -110,7 +270,7 @@ textarea:focus-visible {
   padding: 1rem 2rem;
   text-align: left;
   font-size: 1.5rem;
-  font-weight: bold;
+  font-weight: 600;
 }
 
 /*splits the page into two columns*/
@@ -151,7 +311,7 @@ textarea:focus-visible {
   margin-bottom: 20px;
   color: #1f2937;
   font-size: 20px;
-  font-weight: bold;
+  font-weight: 600;
 }
 
 /* Form groups */
@@ -162,10 +322,10 @@ textarea:focus-visible {
 /* Labels */
 .form-group label {
   display: block;
-  font-size: 14px;
+  font-size: 15px;
   margin-bottom: 5px;
   color: #1f2937;
-  font-weight: bold;
+  font-weight: 600;
   text-align: left;
 }
 
@@ -177,7 +337,7 @@ textarea:focus-visible {
   border: 1px solid #ccc;
   background-color: white;
   color: #1f2937;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 /* Remember + forgot section */
@@ -185,7 +345,7 @@ textarea:focus-visible {
   display: flex;
   justify-content: space-between;
   align-items: left;
-  font-size: 12px;
+  font-size: 14px;
   margin-bottom: 20px;
   color: #1f2937;
 }
@@ -224,7 +384,7 @@ textarea:focus-visible {
   content: '✓';
   color: white;
   font-size: 14px;
-  font-weight: bold;
+  font-weight: 600;
   position: absolute;
 }
 
@@ -262,7 +422,7 @@ textarea:focus-visible {
   content: '✓';
   color: white;
   font-size: 14px;
-  font-weight: bold;
+  font-weight: 600;
   position: absolute;
 }
 
@@ -310,7 +470,7 @@ textarea:focus-visible {
 
 /* Container for the full registration form */
 .register-page {
-  min-height: 100vh;
+  min-height: var(--site-zoom-height, 100vh);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -333,7 +493,7 @@ textarea:focus-visible {
   background-color: #305cde;
   color: white;
   font-size: 1.25rem;
-  font-weight: 700;
+  font-weight: 600;
   padding: 20px 30px;
   border-bottom: 1px solid rgba(255,255,255,0.2);
 }
@@ -379,7 +539,7 @@ textarea:focus-visible {
   color: #f8fafc;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: var(--site-zoom-height, 100vh);
   padding: 28px 18px;
   box-sizing: border-box;
   gap: 28px;
@@ -410,13 +570,13 @@ textarea:focus-visible {
   display: grid;
   place-items: center;
   color: #eff6ff;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 1rem;
 }
 
 .sidebar-name {
   margin: 0;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 1rem;
   color: #f8fafc;
 }
@@ -459,7 +619,7 @@ textarea:focus-visible {
   border: none;
   border-radius: 999px;
   padding: 12px 18px;
-  font-weight: 700;
+  font-weight: 600;
   background: #f8fafc;
   color: #1e293b;
   cursor: pointer;
@@ -661,7 +821,7 @@ textarea:focus-visible {
   --sidebar-width: 220px;
   --topbar-height: 72px;
   display: flex;
-  height: 100dvh;
+  height: var(--site-zoom-height, 100dvh);
   min-height: 0;
   width: 100%;
   overflow: hidden;
@@ -680,7 +840,7 @@ textarea:focus-visible {
 .sidebar {
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);
-  height: 100dvh;
+  height: var(--site-zoom-height, 100dvh);
   overflow-y: auto;
   padding: clamp(22px, 2.6vh, 30px) 24px;
   gap: clamp(16px, 2vh, 24px);
@@ -691,14 +851,18 @@ textarea:focus-visible {
 .sidebar-brand h1 {
   color: #ffffff;
   font-size: 24px;
-  font-weight: 500;
+  font-weight: 800;
   line-height: 1;
   letter-spacing: 0;
   margin: 0;
 }
 
 .sidebar-profile {
-  gap: 12px;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  width: 100%;
   padding: 0;
   background: transparent;
   border: 0;
@@ -706,26 +870,94 @@ textarea:focus-visible {
 }
 
 .sidebar-avatar {
+  justify-self: center;
   width: 36px;
   height: 36px;
   border: 2px solid #17b4ff;
+  border-radius: 50%;
   background: transparent;
   color: #17b4ff;
-  font-size: 12px;
+  font-size: 13px;
+}
+
+.sidebar-avatar-upload {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  justify-self: center;
+}
+
+.sidebar-avatar-upload input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.sidebar-avatar-upload .sidebar-avatar-edit-label {
+  position: absolute;
+  inset: auto -8px -10px;
+  display: grid;
+  place-items: center;
+  min-height: 16px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1957ff;
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0;
+  transform: translateY(3px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.sidebar-avatar-upload:hover .sidebar-avatar-edit-label,
+.sidebar-avatar-upload:focus-within .sidebar-avatar-edit-label,
+.sidebar-avatar-upload.uploading .sidebar-avatar-edit-label {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.sidebar-upload-error {
+  margin: -16px 0 0;
+  color: #fee2e2;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.sidebar-profile-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  transform: translateY(2px);
 }
 
 .sidebar-name {
+  margin: 0;
   color: #ffffff;
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1;
+  font-size: var(--sidebar-name-size, 14px);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .sidebar-id {
+  margin: 0;
   color: rgba(255, 255, 255, 0.65);
-  font-size: 11px;
-  line-height: 1;
-  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 .sidebar-nav {
@@ -740,7 +972,7 @@ textarea:focus-visible {
   border-radius: 8px;
   color: #ffffff;
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -770,7 +1002,7 @@ textarea:focus-visible {
   background: #e11d48;
   color: #ffffff;
   font-size: 15px;
-  font-weight: 900;
+  font-weight: 700;
   cursor: pointer;
   transition: background 0.2s ease, transform 0.2s ease;
 }
@@ -869,8 +1101,8 @@ textarea:focus-visible {
   border-radius: 999px;
   background: #e6ebf2;
   color: #1957ff;
-  font-size: 10px;
-  font-weight: 900;
+  font-size: 11px;
+  font-weight: 700;
   line-height: 1;
   text-transform: uppercase;
 }
@@ -878,8 +1110,8 @@ textarea:focus-visible {
 .topbar-search-result strong {
   overflow: hidden;
   color: #050505;
-  font-size: 14px;
-  font-weight: 900;
+  font-size: 15px;
+  font-weight: 700;
   line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -888,8 +1120,8 @@ textarea:focus-visible {
 .topbar-search-result small {
   overflow: hidden;
   color: #777d86;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -900,7 +1132,7 @@ textarea:focus-visible {
   padding: 12px;
   color: #777d86;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .topbar svg {
@@ -969,7 +1201,7 @@ textarea:focus-visible {
   margin: 2px 4px 12px;
   color: #050505;
   font-size: 17px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .topbar-action-panel button {
@@ -993,8 +1225,8 @@ textarea:focus-visible {
 
 .topbar-action-panel span {
   overflow: hidden;
-  font-size: 14px;
-  font-weight: 900;
+  font-size: 15px;
+  font-weight: 700;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1002,9 +1234,149 @@ textarea:focus-visible {
 
 .topbar-action-panel small {
   color: #59616d;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.topbar-calendar-panel {
+  position: absolute;
+  top: calc(100% + 14px);
+  right: 0;
+  z-index: 30;
+  width: min(326px, calc(100vw - 32px));
+  border: 1px solid #d7dce4;
+  border-radius: 16px;
+  padding: 14px;
+  background: #ffffff;
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.16);
+  box-sizing: border-box;
+}
+
+.topbar-calendar-selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.topbar-calendar-selected strong,
+.topbar-calendar-month strong {
+  overflow: hidden;
+  color: #050505;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-calendar-selected button {
+  flex: 0 0 auto;
+  min-width: 58px;
+  min-height: 32px;
+  border: 1px solid #d7dce4;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #59616d;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.topbar-calendar-month {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0 10px;
+}
+
+.topbar-calendar-month span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.topbar-calendar-month button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: #f2f3f5;
+  color: #777d86;
+  cursor: pointer;
+}
+
+.topbar-calendar-selected button:hover,
+.topbar-calendar-month button:hover {
+  background: #eef2ff;
+  color: #062749;
+}
+
+.topbar-calendar-month svg {
+  width: 15px;
+  height: 15px;
+}
+
+.topbar-calendar-weekdays,
+.topbar-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.topbar-calendar-weekdays span {
+  display: grid;
+  place-items: center;
+  height: 30px;
+  color: #59616d;
   font-size: 12px;
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1;
+}
+
+.topbar-calendar-grid {
+  gap: 4px;
+}
+
+.topbar-calendar-day {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #050505;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.topbar-calendar-day:hover,
+.topbar-calendar-day:focus-visible {
+  background: #eef2ff;
+  color: #062749;
+}
+
+.topbar-calendar-day.outside {
+  color: #a0a6af;
+}
+
+.topbar-calendar-day.today {
+  box-shadow: inset 0 0 0 1px #1957ff;
+  color: #1957ff;
+}
+
+.topbar-calendar-day.selected {
+  background: #1957ff;
+  color: #ffffff;
+  box-shadow: none;
 }
 
 .form-options input[type="checkbox"],
@@ -1019,20 +1391,42 @@ textarea:focus-visible {
   content: '✓';
   color: #ffffff;
   font-size: 17px;
-  font-weight: 900;
+  font-weight: 700;
   position: absolute;
 }
 
 .forgot-btn {
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
+}
+
+.app-main button,
+.app-main input,
+.app-main select,
+.app-main textarea {
+  font-size: 15px;
+}
+
+.topbar .topbar-calendar-selected button {
+  font-size: 13px;
+}
+
+.topbar .topbar-calendar-day {
+  font-size: 14px;
 }
 
 @media (max-width: 720px) {
+  .toast-viewport {
+    right: 16px;
+    left: 16px;
+    bottom: 16px;
+    width: auto;
+  }
+
   .app-shell {
     flex-direction: column;
     height: auto;
-    min-height: 100dvh;
+    min-height: var(--site-zoom-height, 100dvh);
     overflow: visible;
   }
 
@@ -1061,7 +1455,7 @@ textarea:focus-visible {
 
 @media (max-width: 1024px) {
   .main-content {
-    min-height: calc(100vh - 64px);
+    min-height: calc(var(--site-zoom-height, 100vh) - 64px);
   }
 
   .left-side {
@@ -1081,7 +1475,7 @@ textarea:focus-visible {
 
   #root,
   .App {
-    min-height: 100vh;
+    min-height: var(--site-zoom-height, 100vh);
     height: auto;
   }
 

@@ -1,9 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { StatusMessage } from '../components/ui';
+import { useStatusToast } from '../hooks/useNotifications';
+import CourseScheduleBuilder from '../components/CourseScheduleBuilder';
+import { CenteredStatusCard, StatusMessage } from '../components/ui';
+import UserAvatar from '../components/UserAvatar';
 import { createCourse, createUser, getAuditLogs, getBackup, getCourses, getTeacherAssignments } from '../services/adminService';
 import { formatName } from '../utils/formatName';
+import { formatCourseSchedule, parseCourseSchedule } from '../utils/courseSchedule';
 import './Dashboard.css';
 
 const emptyAdminUserForm = {
@@ -62,8 +66,45 @@ const loadAdminRequest = async (label, request, fallback) => {
   }
 };
 
+const normalizeComparableText = (value = '') => String(value || '').trim().toLowerCase();
+
+const getAdminCourseValidationMessage = (courseForm, courses, schedule) => {
+  const code = String(courseForm.code || '').trim().toUpperCase();
+  const name = String(courseForm.name || '').trim();
+
+  if (!name || !code) {
+    return 'Enter both course name and course code.';
+  }
+
+  const duplicateCode = courses.find((course) => String(course.code || '').trim().toUpperCase() === code);
+
+  if (duplicateCode) {
+    return `Duplicate course code "${code}" is not allowed.`;
+  }
+
+  const duplicateCourse = courses.find((course) => normalizeComparableText(course.name) === normalizeComparableText(name)
+    && normalizeComparableText(course.semester || '1st Semester') === normalizeComparableText(courseForm.semester || '1st Semester')
+    && normalizeComparableText(course.schoolYear || '2025-2026') === normalizeComparableText(courseForm.schoolYear || '2025-2026'));
+
+  if (duplicateCourse) {
+    return `Duplicate course title "${name}" for this term is not allowed.`;
+  }
+
+  const scheduleKey = normalizeComparableText(schedule);
+  const teacherId = String(courseForm.teacherId || '').trim();
+  const duplicateTeacherSchedule = scheduleKey && teacherId
+    ? courses.find((course) => String(course.teacherId || '') === teacherId && normalizeComparableText(course.schedule) === scheduleKey)
+    : null;
+
+  if (duplicateTeacherSchedule) {
+    return 'Duplicate schedule for this teacher is not allowed.';
+  }
+
+  return '';
+};
+
 const Dashboard = () => {
-  const { user, grades, users, attendance, teacherAssignments, classAnalytics, reloadData } = useAuth();
+  const { user, grades, users, teacherAssignments, classAnalytics, reloadData } = useAuth();
   const navigate = useNavigate();
   const [adminCourses, setAdminCourses] = useState([]);
   const [adminAssignments, setAdminAssignments] = useState([]);
@@ -74,12 +115,15 @@ const Dashboard = () => {
   const [isCreateCourseOpen, setIsCreateCourseOpen] = useState(false);
   const [adminUserForm, setAdminUserForm] = useState(emptyAdminUserForm);
   const [adminCourseForm, setAdminCourseForm] = useState(emptyAdminCourseForm);
+  const [adminCourseScheduleRows, setAdminCourseScheduleRows] = useState(() => parseCourseSchedule(''));
   const [addUserError, setAddUserError] = useState('');
   const [addCourseError, setAddCourseError] = useState('');
   const [isReviewPlanOpen, setIsReviewPlanOpen] = useState(false);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [isCreatingCourse, setIsCreatingCourse] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
+  useStatusToast(adminStatusMessage, 'success', 'Admin update');
+  useStatusToast(adminErrorMessage, 'error', 'Admin issue');
 
   const studentGrades = user.role === 'student'
     ? grades.filter((grade) => grade.studentId === user.id)
@@ -132,9 +176,6 @@ const Dashboard = () => {
     const average = group.grades.reduce((total, grade) => total + Number(grade.score || 0), 0) / group.grades.length;
     return { ...group, gpa: (average / 25).toFixed(2) };
   });
-  const studentAttendance = attendance.filter((record) => record.studentId === user.id);
-  const presentAttendance = studentAttendance.filter((record) => record.status === 'present').length;
-  const absentAttendance = studentAttendance.filter((record) => record.status === 'absent').length;
 
   useEffect(() => {
     if (user.role !== 'admin') {
@@ -217,6 +258,14 @@ const Dashboard = () => {
     setAddCourseError('');
   };
 
+  const handleAdminCourseScheduleChange = (rows) => {
+    const schedule = formatCourseSchedule(rows);
+
+    setAdminCourseScheduleRows(rows);
+    setAdminCourseForm((currentForm) => ({ ...currentForm, schedule }));
+    setAddCourseError('');
+  };
+
   const handleCloseAddUser = () => {
     if (isCreatingUser) {
       return;
@@ -235,6 +284,7 @@ const Dashboard = () => {
     setIsCreateCourseOpen(false);
     setAddCourseError('');
     setAdminCourseForm(emptyAdminCourseForm);
+    setAdminCourseScheduleRows(parseCourseSchedule(''));
   };
 
   const handleCreateAdminUser = async (event) => {
@@ -279,9 +329,21 @@ const Dashboard = () => {
 
   const handleCreateAdminCourse = async (event) => {
     event.preventDefault();
+    const schedule = formatCourseSchedule(adminCourseScheduleRows);
+    const coursePayload = {
+      ...adminCourseForm,
+      code: String(adminCourseForm.code || '').trim().toUpperCase(),
+      name: String(adminCourseForm.name || '').trim(),
+      description: String(adminCourseForm.description || '').trim(),
+      schedule,
+      schoolYear: String(adminCourseForm.schoolYear || '').trim() || '2025-2026',
+      semester: adminCourseForm.semester || '1st Semester',
+    };
+    const validationMessage = getAdminCourseValidationMessage(coursePayload, adminCourses, schedule);
 
-    if (!adminCourseForm.name.trim() || !adminCourseForm.code.trim()) {
-      setAddCourseError('Enter both course name and course code.');
+    if (validationMessage) {
+      setAdminStatusMessage('');
+      setAddCourseError(validationMessage);
       return;
     }
 
@@ -291,11 +353,12 @@ const Dashboard = () => {
       setAdminStatusMessage('');
       setAdminErrorMessage('');
 
-      const savedCourse = await createCourse(adminCourseForm);
+      const savedCourse = await createCourse(coursePayload);
       setAdminCourses((currentCourses) => [...currentCourses, savedCourse]);
       setAdminStatusMessage(`Course created: ${savedCourse.code} - ${savedCourse.name}`);
       setIsCreateCourseOpen(false);
       setAdminCourseForm(emptyAdminCourseForm);
+      setAdminCourseScheduleRows(parseCourseSchedule(''));
     } catch (error) {
       setAddCourseError(error instanceof Error ? error.message : 'We could not create this course.');
     } finally {
@@ -306,6 +369,7 @@ const Dashboard = () => {
   if (user.role === 'admin') {
     const activeStudents = users.filter((currentUser) => currentUser.role === 'student').length;
     const facultyMembers = users.filter((currentUser) => currentUser.role === 'teacher').length;
+    const adminTeachers = users.filter((currentUser) => currentUser.role === 'teacher');
     const liveCourses = adminCourses.length || new Set(grades.map((grade) => grade.subject).filter(Boolean)).size;
     const activeClasses = adminAssignments.length;
     const statCards = [
@@ -364,6 +428,19 @@ const Dashboard = () => {
 
     return (
       <div className="dashboard-container admin-dashboard">
+        <CenteredStatusCard
+          variant={adminErrorMessage ? 'error' : 'success'}
+          title={adminErrorMessage ? 'Action Needed' : 'Success'}
+          message={adminErrorMessage || adminStatusMessage}
+          onDismiss={() => {
+            if (adminErrorMessage) {
+              setAdminErrorMessage('');
+            } else {
+              setAdminStatusMessage('');
+            }
+          }}
+        />
+
         <div className="admin-dashboard-header">
           <h1>Welcome, Admin</h1>
         </div>
@@ -498,10 +575,17 @@ const Dashboard = () => {
                 <input name="description" value={adminCourseForm.description} onChange={handleAdminCourseFormChange} placeholder="e.g., Comp. Science" />
               </label>
 
-              <label>
+              <div className="admin-course-schedule-field">
                 <span>Schedule</span>
-                <input name="schedule" value={adminCourseForm.schedule} onChange={handleAdminCourseFormChange} placeholder="e.g., MWF 9:00 AM" />
-              </label>
+                <CourseScheduleBuilder
+                  rows={adminCourseScheduleRows}
+                  onChange={handleAdminCourseScheduleChange}
+                  disabled={isCreatingCourse}
+                  showHeader={false}
+                  showDateControls={false}
+                  allowMultiple={false}
+                />
+              </div>
 
               <div className="admin-modal-two-column">
                 <label>
@@ -518,6 +602,14 @@ const Dashboard = () => {
                   <input name="schoolYear" value={adminCourseForm.schoolYear} onChange={handleAdminCourseFormChange} placeholder="2025-2026" />
                 </label>
               </div>
+
+              <label>
+                <span>Teacher Lead</span>
+                <select name="teacherId" value={adminCourseForm.teacherId} onChange={handleAdminCourseFormChange}>
+                  <option value="">Unassigned</option>
+                  {adminTeachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{formatName(teacher.name)}</option>)}
+                </select>
+              </label>
 
               <button type="submit" className="admin-modal-submit" disabled={isCreatingCourse}>
                 {isCreatingCourse ? 'Adding Course...' : 'Add Course'}
@@ -538,18 +630,26 @@ const Dashboard = () => {
     const totalStudents = teacherStudents.length;
     const teacherAverage = Math.round(classAnalytics?.classAverage || 0);
     const topStudents = (classAnalytics?.topPerformers || []).map((item) => ({
+      account: users.find((currentUser) => currentUser.id === item.studentId),
       name: users.find((currentUser) => currentUser.id === item.studentId)?.name || item.studentId,
       note: 'Highest current averages',
       score: `${item.average}%`,
       status: 'Mastery',
     }));
-    const needsImprovement = (classAnalytics?.bottomPerformers || []).map((item) => ({
+    const needsImprovement = (classAnalytics?.bottomPerformers || [])
+      .filter((item) => Number(item.average || 0) < 75)
+      .map((item) => ({
+      account: users.find((currentUser) => currentUser.id === item.studentId),
       name: users.find((currentUser) => currentUser.id === item.studentId)?.name || item.studentId,
-      note: 'Lowest current averages',
+      note: 'Needs targeted support',
       score: `${item.average}%`,
-      status: item.average < 75 ? 'At Risk' : 'Monitor',
+      status: 'At Risk',
     }));
     const distribution = classAnalytics?.distribution || { A: 0, B: 0, C: 0, D: 0, F: 0 };
+    const totalRecordedGrades = Object.values(distribution).reduce((total, count) => total + Number(count || 0), 0);
+    const passingRate = totalRecordedGrades
+      ? Math.round(((distribution.A || 0) + (distribution.B || 0) + (distribution.C || 0)) / totalRecordedGrades * 100)
+      : 0;
     const maxDistribution = Math.max(...Object.values(distribution), 1);
     const gradeDistribution = Object.entries(distribution).map(([letter, count]) => ({
       letter,
@@ -595,8 +695,8 @@ const Dashboard = () => {
                 <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
               </svg>
             </span>
-            <span className="teacher-stat-trend">Goal Met</span>
-            <p className="teacher-stat-value">92%</p>
+            <span className="teacher-stat-trend">{totalRecordedGrades ? 'Goal Met' : 'No Grades'}</span>
+            <p className="teacher-stat-value">{passingRate}%</p>
             <p className="teacher-stat-label">Overall Passing Rate</p>
           </div>
         </div>
@@ -633,7 +733,7 @@ const Dashboard = () => {
             <div className="teacher-student-list">
               {topStudents.map((student) => (
                 <div key={student.name} className="teacher-student-item">
-                  <span className="teacher-student-avatar">{student.name[0]}</span>
+                  <UserAvatar user={student.account} name={student.name} className="teacher-student-avatar" fallback="S" />
                   <span className="teacher-student-info">
                     <strong>{student.name}</strong>
                     <small>{student.note}</small>
@@ -650,19 +750,23 @@ const Dashboard = () => {
           <section className="teacher-list-section">
             <h2>Needs Improvement</h2>
             <div className="teacher-student-list">
-              {needsImprovement.map((student) => (
-                <div key={student.name} className="teacher-student-item">
-                  <span className="teacher-student-avatar">{student.name[0]}</span>
-                  <span className="teacher-student-info">
-                    <strong>{student.name}</strong>
-                    <small>{student.note}</small>
-                  </span>
-                  <span className="teacher-student-score teacher-student-score-risk">
-                    <strong>{student.score}</strong>
-                    <small>{student.status}</small>
-                  </span>
-                </div>
-              ))}
+              {needsImprovement.length > 0 ? (
+                needsImprovement.map((student) => (
+                  <div key={student.name} className="teacher-student-item">
+                    <UserAvatar user={student.account} name={student.name} className="teacher-student-avatar" fallback="S" />
+                    <span className="teacher-student-info">
+                      <strong>{student.name}</strong>
+                      <small>{student.note}</small>
+                    </span>
+                    <span className="teacher-student-score teacher-student-score-risk">
+                      <strong>{student.score}</strong>
+                      <small>{student.status}</small>
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <p className="teacher-student-empty">No students are currently below passing.</p>
+              )}
             </div>
           </section>
         </div>
@@ -707,10 +811,10 @@ const Dashboard = () => {
         <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '20px', background: 'white', color: '#1f2937' }}>
           <thead>
             <tr style={{ background: '#f4f4f4', textAlign: 'left' }}>
-              <th style={{ padding: '10px', border: '1px solid #ddd', color: '#1e293b', fontWeight: 600 }}>Student</th>
-              <th style={{ padding: '10px', border: '1px solid #ddd', color: '#1e293b', fontWeight: 600 }}>Subject</th>
-              <th style={{ padding: '10px', border: '1px solid #ddd', color: '#1e293b', fontWeight: 600 }}>Score</th>
-              <th style={{ padding: '10px', border: '1px solid #ddd', color: '#1e293b', fontWeight: 600 }}>Feedback</th>
+              <th style={{ padding: '10px', border: '1px solid #ddd', color: '#1e293b', fontWeight: 500 }}>Student</th>
+              <th style={{ padding: '10px', border: '1px solid #ddd', color: '#1e293b', fontWeight: 500 }}>Subject</th>
+              <th style={{ padding: '10px', border: '1px solid #ddd', color: '#1e293b', fontWeight: 500 }}>Score</th>
+              <th style={{ padding: '10px', border: '1px solid #ddd', color: '#1e293b', fontWeight: 500 }}>Feedback</th>
             </tr>
           </thead>
           <tbody>
@@ -744,8 +848,8 @@ const Dashboard = () => {
           <p className="stat-value">{getUniqueSubjects()}</p>
         </div>
         <div className="stat-card">
-          <h3>Avg. Attendance</h3>
-          <p className="stat-value">92%</p>
+          <h3>Feedback Notes</h3>
+          <p className="stat-value">{feedbackRows.length}</p>
         </div>
       </div>
 
@@ -804,19 +908,19 @@ const Dashboard = () => {
 
         <div className="right-column">
           <section className="card attendance-card">
-            <h2>Attendance Metrics</h2>
+            <h2>Academic Snapshot</h2>
             <div className="metrics-grid">
               <div className="metric">
-                <p className="metric-label">Total</p>
-                <p className="metric-value">{studentAttendance.length}</p>
+                <p className="metric-label">Records</p>
+                <p className="metric-value">{studentGrades.length}</p>
               </div>
               <div className="metric">
-                <p className="metric-label present">Present</p>
-                <p className="metric-value">{presentAttendance}</p>
+                <p className="metric-label present">Passing</p>
+                <p className="metric-value">{studentGrades.filter((grade) => Number(grade.score) >= 75).length}</p>
               </div>
               <div className="metric">
-                <p className="metric-label absent">Absent</p>
-                <p className="metric-value">{absentAttendance}</p>
+                <p className="metric-label absent">Needs Work</p>
+                <p className="metric-value">{studentGrades.filter((grade) => Number(grade.score) < 75).length}</p>
               </div>
             </div>
           </section>

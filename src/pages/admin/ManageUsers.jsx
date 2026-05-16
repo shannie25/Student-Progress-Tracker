@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { StatusMessage } from '../../components/ui';
+import { useStatusToast } from '../../hooks/useNotifications';
+import CourseScheduleBuilder from '../../components/CourseScheduleBuilder';
+import UserAvatar from '../../components/UserAvatar';
+import { CenteredStatusCard, StatusMessage } from '../../components/ui';
 import { formatName } from '../../utils/formatName';
+import { formatCourseSchedule, parseCourseSchedule } from '../../utils/courseSchedule';
 import {
   createCourse,
   createGradeScale,
+  createTeacherAssignment,
   createUser,
   deleteCourse,
   deleteGradeScale,
+  deleteTeacherAssignment,
   deleteUser,
   getAuditLogs,
   getCourses,
@@ -38,6 +44,7 @@ const emptyUserForm = {
 const emptyResetPasswordForm = { password: '', confirmPassword: '' };
 const emptyCourseForm = { code: '', name: '', description: '', schedule: '', semester: '1st Semester', schoolYear: '2025-2026', teacherId: '' };
 const emptyScaleForm = { label: '', minScore: 90, maxScore: 100, description: '' };
+const studentProgramOptions = ['BSIT', 'BSCS', 'BSIS'];
 const usersPerPage = 4;
 const coursesPerPage = 5;
 const auditLogsPerPage = 4;
@@ -67,8 +74,22 @@ const composeName = (form) => {
   return `${form.firstName || ''} ${form.lastName || ''}`.trim() || form.name;
 };
 
+const getCourseAssignmentKey = (course) => {
+  return `${course.teacherId || ''}|${course.name || ''}|${course.schoolYear || '2025-2026'}|${course.semester || '1st Semester'}`;
+};
+
+const getTeacherAssignmentKey = (assignment) => {
+  return `${assignment.teacherId || ''}|${assignment.subject || ''}|${assignment.schoolYear || '2025-2026'}|${assignment.semester || '1st Semester'}`;
+};
+
 const parseScaleRange = (range = '') => {
-  const [minScore, maxScore] = range.match(/\d+/g)?.map(Number) || [0, 0];
+  if (/below/i.test(range)) {
+    const ceiling = Number(range.match(/\d+(?:\.\d+)?/)?.[0] || 0);
+
+    return { minScore: 0, maxScore: Math.max(0, ceiling - 0.01) };
+  }
+
+  const [minScore, maxScore] = range.match(/\d+(?:\.\d+)?/g)?.map(Number) || [0, 0];
   return { minScore, maxScore };
 };
 
@@ -83,6 +104,95 @@ const createScaleDraftRow = (row = {}, index = 0) => {
     maxScore: row.maxScore ?? rangeScores.maxScore ?? 100,
     description: row.description || row.title || '',
   };
+};
+
+const getScaleValidationMessage = (rows) => {
+  const seenLabels = new Map();
+  const seenRanges = new Map();
+
+  for (const row of rows) {
+    if (row.minScore < 0 || row.maxScore > 100 || row.minScore > row.maxScore) {
+      return 'Grade scale ranges must stay between 0 and 100, with minimum not higher than maximum.';
+    }
+
+    const labelKey = row.label.toLowerCase();
+    const rangeKey = `${row.minScore.toFixed(2)}-${row.maxScore.toFixed(2)}`;
+
+    if (seenLabels.has(labelKey)) {
+      return `Duplicate grade label "${row.label}" is not allowed.`;
+    }
+
+    if (seenRanges.has(rangeKey)) {
+      return `Duplicate score range ${row.minScore} - ${row.maxScore}% is not allowed.`;
+    }
+
+    seenLabels.set(labelKey, row);
+    seenRanges.set(rangeKey, row);
+  }
+
+  for (let currentIndex = 0; currentIndex < rows.length; currentIndex += 1) {
+    for (let nextIndex = currentIndex + 1; nextIndex < rows.length; nextIndex += 1) {
+      const currentRow = rows[currentIndex];
+      const nextRow = rows[nextIndex];
+      const rangesOverlap = currentRow.minScore <= nextRow.maxScore && nextRow.minScore <= currentRow.maxScore;
+
+      if (rangesOverlap) {
+        return `Score ranges for "${currentRow.label}" and "${nextRow.label}" overlap.`;
+      }
+    }
+  }
+
+  return '';
+};
+
+const hasScaleChanged = (row, original) => {
+  if (!original) return true;
+
+  return row.label !== String(original.label || '').trim()
+    || row.description !== String(original.description || '').trim()
+    || Number(row.minScore).toFixed(2) !== Number(original.minScore).toFixed(2)
+    || Number(row.maxScore).toFixed(2) !== Number(original.maxScore).toFixed(2);
+};
+
+const normalizeComparableText = (value = '') => String(value || '').trim().toLowerCase();
+
+const getCourseValidationMessage = ({ courseForm, courses, editingCourseId, schedule }) => {
+  const code = String(courseForm.code || '').trim().toUpperCase();
+  const name = String(courseForm.name || '').trim();
+  const teacherId = String(courseForm.teacherId || '').trim();
+  const scheduleKey = normalizeComparableText(schedule);
+
+  if (!name || !code) {
+    return 'Course name and course code are required.';
+  }
+
+  const duplicateCode = courses.find((course) => String(course.id || '') !== String(editingCourseId || '')
+    && String(course.code || '').trim().toUpperCase() === code);
+
+  if (duplicateCode) {
+    return `Duplicate course code "${code}" is not allowed.`;
+  }
+
+  const duplicateCourse = courses.find((course) => String(course.id || '') !== String(editingCourseId || '')
+    && normalizeComparableText(course.name) === normalizeComparableText(name)
+    && normalizeComparableText(course.semester || '1st Semester') === normalizeComparableText(courseForm.semester || '1st Semester')
+    && normalizeComparableText(course.schoolYear || '2025-2026') === normalizeComparableText(courseForm.schoolYear || '2025-2026'));
+
+  if (duplicateCourse) {
+    return `Duplicate course title "${name}" for this term is not allowed.`;
+  }
+
+  const duplicateTeacherSchedule = scheduleKey && teacherId
+    ? courses.find((course) => String(course.id || '') !== String(editingCourseId || '')
+      && String(course.teacherId || '') === teacherId
+      && normalizeComparableText(course.schedule) === scheduleKey)
+    : null;
+
+  if (duplicateTeacherSchedule) {
+    return 'Duplicate schedule for this teacher is not allowed.';
+  }
+
+  return '';
 };
 
 const getCourseDepartment = (course) => {
@@ -137,7 +247,7 @@ const CourseCatalog = ({
     const query = searchQuery.trim().toLowerCase();
 
     return courseRows.filter((course) => {
-      const matchesQuery = !query || [course.code, course.name, course.department, course.teacherName]
+      const matchesQuery = !query || [course.code, course.name, course.department, course.teacherName, course.schedule]
         .filter(Boolean)
         .some((field) => String(field).toLowerCase().includes(query));
       const matchesDepartment = departmentFilter === 'all' || course.department === departmentFilter;
@@ -212,6 +322,7 @@ const CourseCatalog = ({
               <th>Course Name</th>
               <th>Teacher/Lead</th>
               <th>Department</th>
+              <th>Schedule</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -222,6 +333,7 @@ const CourseCatalog = ({
                 <td>{course.name}</td>
                 <td className={course.teacherId ? '' : 'muted'}>{course.teacherName}</td>
                 <td><span className="course-department-pill">{course.department}</span></td>
+                <td className={course.schedule ? '' : 'muted'}>{course.schedule || 'No schedule'}</td>
                 <td>
                   <span className="users-action-cell">
                     <IconButton label={`Edit ${course.name}`} onClick={() => onEditCourse(course)} disabled={isSaving}>
@@ -244,7 +356,7 @@ const CourseCatalog = ({
             ))}
             {pageCourses.length === 0 && (
               <tr>
-                <td colSpan="5" className="users-empty">No courses match these filters.</td>
+                <td colSpan="6" className="users-empty">No courses match these filters.</td>
               </tr>
             )}
           </tbody>
@@ -477,7 +589,7 @@ const AuditLogsView = ({
                   </td>
                   <td>
                     <span className="audit-user-cell">
-                      <span className="users-avatar">{account ? formatName(account.name).slice(0, 2).toUpperCase() : 'U'}</span>
+                      <UserAvatar user={account} className="users-avatar" fallback="U" />
                       <span>
                         <strong>{account ? formatName(account.name) : (log.adminId || 'System')}</strong>
                         <small>{account?.role ? roleLabel(account.role) : 'Unknown'}</small>
@@ -526,6 +638,7 @@ const ManageUsers = () => {
   const location = useLocation();
   const [userForm, setUserForm] = useState(emptyUserForm);
   const [editingUserId, setEditingUserId] = useState('');
+  const [selectedCourseIds, setSelectedCourseIds] = useState([]);
   const [editingCourseId, setEditingCourseId] = useState('');
   const [isUserFormOpen, setIsUserFormOpen] = useState(false);
   const [resetPasswordUser, setResetPasswordUser] = useState(null);
@@ -544,7 +657,8 @@ const ManageUsers = () => {
   const [auditActionFilter, setAuditActionFilter] = useState('all');
   const [auditCurrentPage, setAuditCurrentPage] = useState(1);
   const [courseForm, setCourseForm] = useState(emptyCourseForm);
-  const [scaleForm, setScaleForm] = useState(emptyScaleForm);
+  const [courseScheduleRows, setCourseScheduleRows] = useState(() => parseCourseSchedule(''));
+  const [, setScaleForm] = useState(emptyScaleForm);
   const [scaleDraftRows, setScaleDraftRows] = useState([]);
   const [removedScaleIds, setRemovedScaleIds] = useState([]);
   const [assignments, setAssignments] = useState([]);
@@ -554,6 +668,9 @@ const ManageUsers = () => {
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  useStatusToast(successMessage, 'success', 'Admin update');
+  useStatusToast(errorMessage, 'error', 'Admin issue');
+  useStatusToast(resetPasswordError, 'error', 'Password reset issue');
 
   const teachers = users.filter((user) => user.role === 'teacher');
   const assignedTeacherIds = useMemo(() => new Set(assignments.map((assignment) => assignment.teacherId)), [assignments]);
@@ -568,6 +685,8 @@ const ManageUsers = () => {
   const assignedCourseNames = new Set(editingUserAssignments.map((assignment) => assignment.course).filter(Boolean));
   const subjectChecklist = Array.from(new Set([...assignments.map((assignment) => assignment.subject).filter(Boolean), 'Math', 'Programming', 'English', 'Science'])).slice(0, 5);
   const courseChecklist = Array.from(new Set([...courses.map((course) => course.code).filter(Boolean), ...assignments.map((assignment) => assignment.course).filter(Boolean), 'BSIT - 1A', 'BSIT - 1B', 'BSCS - 1A'])).slice(0, 5);
+  const programOptions = studentProgramOptions;
+  const assignableCourses = courses.filter((course) => course.id);
   const activeAdminView = {
     '#courses': 'courses',
     '#grade-scale': 'grade-scale',
@@ -646,6 +765,7 @@ const ManageUsers = () => {
 
   const openCreateUser = () => {
     setEditingUserId('');
+    setSelectedCourseIds([]);
     setUserForm(emptyUserForm);
     setIsUserFormOpen(true);
   };
@@ -653,6 +773,7 @@ const ManageUsers = () => {
   const openCreateCourse = () => {
     setEditingCourseId('');
     setCourseForm(emptyCourseForm);
+    setCourseScheduleRows(parseCourseSchedule(''));
     setIsCourseFormOpen(true);
   };
 
@@ -667,6 +788,7 @@ const ManageUsers = () => {
       schoolYear: course.schoolYear || '2025-2026',
       teacherId: course.teacherId || '',
     });
+    setCourseScheduleRows(parseCourseSchedule(course.schedule || ''));
     setIsCourseFormOpen(true);
   };
 
@@ -677,7 +799,16 @@ const ManageUsers = () => {
 
     setEditingCourseId('');
     setCourseForm(emptyCourseForm);
+    setCourseScheduleRows(parseCourseSchedule(''));
     setIsCourseFormOpen(false);
+  };
+
+  const handleCourseScheduleChange = (rows) => {
+    const schedule = formatCourseSchedule(rows);
+
+    setCourseScheduleRows(rows);
+    setCourseForm((currentForm) => ({ ...currentForm, schedule }));
+    setErrorMessage('');
   };
 
   const openCreateScale = () => {
@@ -705,6 +836,7 @@ const ManageUsers = () => {
     }
 
     setEditingUserId('');
+    setSelectedCourseIds([]);
     setUserForm(emptyUserForm);
     setIsUserFormOpen(false);
   };
@@ -728,18 +860,50 @@ const ManageUsers = () => {
     };
 
     runAdminAction(async () => {
+      const shouldSyncCourseAssignments = Boolean(editingUserId && userPayload.role === 'student');
+
       if (editingUserId) {
         await updateUser(editingUserId, {
           name: userPayload.name,
           email: userPayload.email,
           role: userPayload.role,
+          course: userPayload.role === 'student' ? userPayload.course : '',
+          semester: userPayload.semester,
+          schoolYear: userPayload.schoolYear,
         });
       } else {
         await createUser(userPayload);
       }
 
+      if (shouldSyncCourseAssignments) {
+        const selectedIdSet = new Set(selectedCourseIds.map(String));
+        const selectedCourses = courses.filter((course) => course.id && course.teacherId && selectedIdSet.has(String(course.id)));
+        const selectedAssignmentKeys = new Set(selectedCourses.map(getCourseAssignmentKey));
+        const catalogAssignmentKeys = new Set(courses.filter((course) => course.teacherId).map(getCourseAssignmentKey));
+        const existingStudentAssignments = assignments.filter((assignment) => assignment.studentId === editingUserId);
+        const assignmentsToRemove = existingStudentAssignments.filter((assignment) => (
+          assignment.id
+          && catalogAssignmentKeys.has(getTeacherAssignmentKey(assignment))
+          && !selectedAssignmentKeys.has(getTeacherAssignmentKey(assignment))
+        ));
+
+        await Promise.all([
+          ...assignmentsToRemove.map((assignment) => deleteTeacherAssignment(assignment.id)),
+          ...selectedCourses.map((course) => createTeacherAssignment({
+            teacherId: course.teacherId,
+            studentId: editingUserId,
+            subject: course.name,
+            course: userPayload.course,
+            section: course.code,
+            schoolYear: course.schoolYear || userPayload.schoolYear,
+            semester: course.semester || userPayload.semester,
+          })),
+        ]);
+      }
+
       setUserForm(emptyUserForm);
       setEditingUserId('');
+      setSelectedCourseIds([]);
       setIsUserFormOpen(false);
     }, editingUserId ? 'User updated successfully.' : 'User created successfully.');
   };
@@ -747,8 +911,18 @@ const ManageUsers = () => {
   const handleEditUser = (currentUser) => {
     const nameParts = splitName(currentUser.name);
     const assignment = assignments.find((item) => item.teacherId === currentUser.id || item.studentId === currentUser.id);
+    const studentAssignmentKeys = new Set(
+      assignments
+        .filter((item) => item.studentId === currentUser.id)
+        .map(getTeacherAssignmentKey)
+    );
 
     setEditingUserId(currentUser.id);
+    setSelectedCourseIds(
+      courses
+        .filter((course) => course.id && studentAssignmentKeys.has(getCourseAssignmentKey(course)))
+        .map((course) => String(course.id))
+    );
     setUserForm({
       ...emptyUserForm,
       id: currentUser.id,
@@ -758,17 +932,17 @@ const ManageUsers = () => {
       email: currentUser.email,
       role: currentUser.role,
       status: getAccountStatus(currentUser),
-      course: assignment?.course || 'BSIT',
+      course: programOptions.includes(currentUser.course) ? currentUser.course : programOptions[0],
       department: getCourseDepartment({ code: assignment?.course, name: assignment?.subject, description: assignment?.course }),
-      semester: assignment?.semester || '1st Semester',
-      schoolYear: assignment?.schoolYear || '2025-2026',
+      semester: currentUser.semester || assignment?.semester || '1st Semester',
+      schoolYear: currentUser.schoolYear || assignment?.schoolYear || '2025-2026',
       password: '',
     });
     setIsUserFormOpen(true);
   };
 
   const handleDeleteUser = (currentUser) => {
-    if (!window.confirm(`Delete ${currentUser.name}? This removes linked assignments, attendance, and student grades.`)) {
+    if (!window.confirm(`Delete ${currentUser.name}? This removes linked assignments and student grades.`)) {
       return;
     }
 
@@ -803,14 +977,39 @@ const ManageUsers = () => {
 
   const handleSubmitCourse = (event) => {
     event.preventDefault();
+    const schedule = formatCourseSchedule(courseScheduleRows);
+    const coursePayload = {
+      ...courseForm,
+      code: String(courseForm.code || '').trim().toUpperCase(),
+      name: String(courseForm.name || '').trim(),
+      description: String(courseForm.description || '').trim(),
+      schedule,
+      schoolYear: String(courseForm.schoolYear || '').trim() || '2025-2026',
+      semester: courseForm.semester || '1st Semester',
+      teacherId: courseForm.teacherId || '',
+    };
+    const validationMessage = getCourseValidationMessage({
+      courseForm: coursePayload,
+      courses,
+      editingCourseId,
+      schedule,
+    });
+
+    if (validationMessage) {
+      setSuccessMessage('');
+      setErrorMessage(validationMessage);
+      return;
+    }
+
     runAdminAction(async () => {
       if (editingCourseId) {
-        await updateCourse(Number(editingCourseId), courseForm);
+        await updateCourse(Number(editingCourseId), coursePayload);
       } else {
-        await createCourse(courseForm);
+        await createCourse(coursePayload);
       }
 
       setCourseForm(emptyCourseForm);
+      setCourseScheduleRows(parseCourseSchedule(''));
       setEditingCourseId('');
       setIsCourseFormOpen(false);
     }, editingCourseId ? 'Course updated successfully.' : 'Course created successfully.');
@@ -862,18 +1061,38 @@ const ManageUsers = () => {
     }));
 
     if (normalizedRows.length === 0) {
+      setSuccessMessage('');
       setErrorMessage('Add at least one grade scale row before saving.');
       return;
     }
 
-    if (normalizedRows.some((row) => !row.label || !Number.isFinite(row.minScore) || !Number.isFinite(row.maxScore))) {
+    if (scaleDraftRows.some((row) => !String(row.label || '').trim() || String(row.minScore).trim() === '' || String(row.maxScore).trim() === '')
+      || normalizedRows.some((row) => !Number.isFinite(row.minScore) || !Number.isFinite(row.maxScore))) {
+      setSuccessMessage('');
       setErrorMessage('Each row needs a grade label, minimum score, and maximum score.');
       return;
     }
 
+    const scaleValidationMessage = getScaleValidationMessage(normalizedRows);
+
+    if (scaleValidationMessage) {
+      setSuccessMessage('');
+      setErrorMessage(scaleValidationMessage);
+      return;
+    }
+
     runAdminAction(async () => {
-      await Promise.all(removedScaleIds.map((scaleId) => deleteGradeScale(scaleId)));
-      await Promise.all(normalizedRows.map((row) => {
+      const currentScaleById = new Map(gradeScales.map((scale) => [scale.id, scale]));
+
+      for (const scaleId of removedScaleIds) {
+        await deleteGradeScale(scaleId);
+      }
+
+      for (const row of normalizedRows) {
+        if (row.id && !hasScaleChanged(row, currentScaleById.get(row.id))) {
+          continue;
+        }
+
         const payload = {
           label: row.label,
           minScore: row.minScore,
@@ -881,8 +1100,13 @@ const ManageUsers = () => {
           description: row.description,
         };
 
-        return row.id ? updateGradeScale(row.id, payload) : createGradeScale(payload);
-      }));
+        if (row.id) {
+          await updateGradeScale(row.id, payload);
+        } else {
+          await createGradeScale(payload);
+        }
+      }
+
       setScaleForm(emptyScaleForm);
       setScaleDraftRows([]);
       setRemovedScaleIds([]);
@@ -913,6 +1137,19 @@ const ManageUsers = () => {
 
   return (
     <div className="manage-users-page">
+      <CenteredStatusCard
+        variant={errorMessage ? 'error' : 'success'}
+        title={errorMessage ? 'Action Needed' : 'Success'}
+        message={errorMessage || successMessage}
+        onDismiss={() => {
+          if (errorMessage) {
+            setErrorMessage('');
+          } else {
+            setSuccessMessage('');
+          }
+        }}
+      />
+
       {activeAdminView === 'courses' && (
         <CourseCatalog
           courses={courses}
@@ -993,18 +1230,11 @@ const ManageUsers = () => {
               {pageUsers.map((currentUser) => {
                 const status = getAccountStatus(currentUser);
                 const displayName = formatName(currentUser.name);
-                const initials = displayName
-                  .split(' ')
-                  .map((part) => part[0])
-                  .join('')
-                  .slice(0, 2)
-                  .toUpperCase();
-
                 return (
                   <tr key={currentUser.id}>
                     <td>
                       <span className="users-name-cell">
-                        <span className="users-avatar">{initials}</span>
+                        <UserAvatar user={currentUser} className="users-avatar" fallback="U" />
                         <span>
                           <strong>{displayName}</strong>
                           <small>{currentUser.email}</small>
@@ -1148,15 +1378,48 @@ const ManageUsers = () => {
               )}
             </div>
 
-            {editingUserId && userForm.role === 'student' && (
+            {userForm.role === 'student' && (
               <label>
-                <span>Course</span>
+                <span>Program</span>
                 <select name="course" value={userForm.course} onChange={updateForm(setUserForm)}>
-                  <option>BSIT</option>
-                  <option>BSCS</option>
-                  <option>BSIS</option>
+                  {programOptions.map((program) => <option key={program} value={program}>{program}</option>)}
                 </select>
               </label>
+            )}
+
+            {editingUserId && userForm.role === 'student' && (
+              <section className="student-course-assignment-panel">
+                <span>Course / Subject Assignments</span>
+                {assignableCourses.length > 0 ? (
+                  <div className="student-course-assignment-list">
+                    {assignableCourses.map((course) => {
+                      const courseId = String(course.id);
+                      const hasTeacherLead = Boolean(course.teacherId);
+
+                      return (
+                        <label key={courseId} className={`users-check-row ${hasTeacherLead ? '' : 'disabled'}`.trim()}>
+                          <b>{course.name}</b>
+                          <small>{course.code}{hasTeacherLead ? '' : ' - assign a teacher lead first'}</small>
+                          <input
+                            type="checkbox"
+                            checked={selectedCourseIds.includes(courseId)}
+                            disabled={!hasTeacherLead}
+                            onChange={(event) => {
+                              setSelectedCourseIds((currentIds) => (
+                                event.target.checked
+                                  ? Array.from(new Set([...currentIds, courseId]))
+                                  : currentIds.filter((currentId) => currentId !== courseId)
+                              ));
+                            }}
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="users-assignment-empty">Create course subjects first, then return here to assign them.</p>
+                )}
+              </section>
             )}
 
             {editingUserId && userForm.role === 'teacher' && (
@@ -1180,7 +1443,7 @@ const ManageUsers = () => {
                     ))}
                   </section>
                   <section>
-                    <span>Assigned Courses</span>
+                    <span>Assigned Programs</span>
                     {courseChecklist.map((course) => (
                       <label key={course} className="users-check-row">
                         <b>{course}</b>
@@ -1273,20 +1536,27 @@ const ManageUsers = () => {
             <h2 id="courses-modal-title">{editingCourseId ? 'Edit Course' : 'Create Course'}</h2>
             <label>
               <span>Course Name</span>
-              <input name="name" placeholder="e.g., Information Technology Fundamentals" value={courseForm.name} onChange={updateForm(setCourseForm)} required />
+              <input name="name" placeholder="e.g., Programming 2" value={courseForm.name} onChange={updateForm(setCourseForm)} required />
             </label>
             <label>
               <span>Course Code</span>
-              <input name="code" placeholder="e.g. IT1070" value={courseForm.code} onChange={updateForm(setCourseForm)} required />
+              <input name="code" placeholder="e.g. IT203" value={courseForm.code} onChange={updateForm(setCourseForm)} required />
             </label>
             <label>
               <span>Department</span>
               <input name="description" placeholder="e.g., Comp. Science" value={courseForm.description} onChange={updateForm(setCourseForm)} />
             </label>
-            <label>
+            <div className="course-schedule-field">
               <span>Schedule</span>
-              <input name="schedule" placeholder="e.g., MWF 9:00 AM" value={courseForm.schedule} onChange={updateForm(setCourseForm)} />
-            </label>
+              <CourseScheduleBuilder
+                rows={courseScheduleRows}
+                onChange={handleCourseScheduleChange}
+                disabled={isSaving}
+                showHeader={false}
+                showDateControls={false}
+                allowMultiple={false}
+              />
+            </div>
             <div className="course-modal-two-column">
               <label>
                 <span>Semester</span>

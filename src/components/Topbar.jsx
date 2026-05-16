@@ -3,21 +3,61 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { formatName } from '../utils/formatName';
 
+const calendarWeekdays = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+const getMonthStart = (date) => new Date(date.getFullYear(), date.getMonth(), 1);
+
+const addMonths = (date, amount) => new Date(date.getFullYear(), date.getMonth() + amount, 1);
+
+const isSameCalendarDay = (firstDate, secondDate) => (
+  firstDate.getFullYear() === secondDate.getFullYear()
+  && firstDate.getMonth() === secondDate.getMonth()
+  && firstDate.getDate() === secondDate.getDate()
+);
+
+const getCalendarDays = (monthDate) => {
+  const monthStart = getMonthStart(monthDate);
+  const firstVisibleDate = new Date(monthStart);
+
+  firstVisibleDate.setDate(monthStart.getDate() - monthStart.getDay());
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(firstVisibleDate);
+    date.setDate(firstVisibleDate.getDate() + index);
+
+    return {
+      date,
+      isCurrentMonth: date.getMonth() === monthStart.getMonth(),
+    };
+  });
+};
+
+const getCalendarDateKey = (date) => `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+
 const Topbar = () => {
   const navigate = useNavigate();
-  const { user, users, grades, attendance } = useAuth();
+  const { user, users, grades } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [activePanel, setActivePanel] = useState('');
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [calendarMonth, setCalendarMonth] = useState(() => getMonthStart(new Date()));
   const trimmedQuery = searchQuery.trim();
   const visibleGrades = user?.role === 'student'
     ? grades.filter((grade) => grade.studentId === user.id)
     : grades;
-  const visibleAttendance = user?.role === 'student'
-    ? attendance.filter((record) => record.studentId === user.id)
-    : attendance;
   const latestGrade = visibleGrades[0];
-  const latestAttendance = visibleAttendance[0];
+  const today = new Date();
+  const calendarDays = useMemo(() => getCalendarDays(calendarMonth), [calendarMonth]);
+  const selectedDateLabel = selectedDate.toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
+  const calendarMonthLabel = calendarMonth.toLocaleDateString(undefined, {
+    month: 'long',
+    year: 'numeric',
+  });
 
   const notificationItems = [
     latestGrade && {
@@ -25,48 +65,12 @@ const Topbar = () => {
       description: `${latestGrade.subject || 'Subject'} ${latestGrade.score != null ? `- ${latestGrade.score}%` : 'is ready for review'}`,
       to: user.role === 'admin' ? '/manage-users#grade-scale' : user.role === 'teacher' ? '/grades-management' : '/add-grades',
     },
-    latestAttendance && user.role !== 'teacher' && {
-      title: 'Attendance updated',
-      description: `${latestAttendance.status || 'Record'} status logged${latestAttendance.date ? ` for ${new Date(latestAttendance.date).toLocaleDateString()}` : ''}.`,
-      to: '/attendance',
-    },
     {
       title: user.role === 'admin' ? 'Admin tools ready' : user.role === 'teacher' ? 'Class insights ready' : 'Academic report ready',
       description: user.role === 'admin' ? 'Review users, courses, reports, and grading settings.' : user.role === 'teacher' ? 'Open your class dashboard for current learning signals.' : 'Generate your latest academic summary.',
       to: user.role === 'admin' ? '/manage-users#users' : user.role === 'teacher' ? '/dashboard' : '/generate-report',
     },
   ].filter(Boolean);
-
-  const calendarItems = [
-    {
-      title: 'Today',
-      description: new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }),
-      to: '/dashboard',
-    },
-    user.role !== 'teacher' && {
-      title: 'Attendance calendar',
-      description: `${visibleAttendance.length} attendance record${visibleAttendance.length === 1 ? '' : 's'} available.`,
-      to: '/attendance',
-    },
-    {
-      title: user.role === 'teacher' ? 'Grade review schedule' : 'Report schedule',
-      description: user.role === 'teacher' ? 'Review class grades and students needing attention.' : 'Open reports for the current semester.',
-      to: user.role === 'teacher' ? '/grades-management' : '/generate-report',
-    },
-  ].filter(Boolean);
-
-  const messageItems = [
-    {
-      title: user.role === 'admin' ? 'System notice' : user.role === 'teacher' ? 'Class advisory' : 'Instructor feedback',
-      description: user.role === 'admin' ? 'Audit logs and account changes are available.' : user.role === 'teacher' ? 'Students with lower averages are flagged in your dashboard.' : 'Feedback appears beside your grade records.',
-      to: user.role === 'admin' ? '/manage-users#audit-logs' : user.role === 'teacher' ? '/students' : '/add-grades',
-    },
-    {
-      title: 'Reports',
-      description: 'Open the reports page to export PDF or Excel summaries.',
-      to: '/generate-report',
-    },
-  ];
 
   const searchResults = useMemo(() => {
     if (!trimmedQuery || !user) {
@@ -84,10 +88,9 @@ const Topbar = () => {
       .filter(Boolean)
       .some((field) => String(field).toLowerCase().includes(normalizedQuery));
     const pageItems = [
-      { label: 'Dashboard', description: 'Overview, GPA, attendance, and class insights', to: '/dashboard', keywords: 'home overview academic performance' },
+      { label: 'Dashboard', description: 'Overview, GPA, grades, and class insights', to: '/dashboard', keywords: 'home overview academic performance' },
       { label: user.role === 'teacher' ? 'Classes' : 'Grades', description: 'Subjects, scores, and grade records', to: '/add-grades', keywords: 'grades subjects scores records' },
       { label: 'Students', description: 'Assigned student list and profiles', to: '/students', keywords: 'students profiles class', visible: user.role === 'teacher' },
-      { label: 'Attendance', description: 'Attendance records and status', to: '/attendance', keywords: 'attendance present absent late', visible: user.role !== 'teacher' },
       { label: 'Grades Management', description: 'Teacher grade entry and registry', to: '/grades-management', keywords: 'teacher grades management entry', visible: user.role === 'teacher' },
       { label: 'Reports', description: 'Generate class and student reports', to: '/generate-report', keywords: 'report pdf excel class summary' },
       { label: 'Users', description: 'Admin accounts, roles, and system users', to: '/manage-users#users', keywords: 'admin users accounts roles add user', visible: user.role === 'admin' },
@@ -99,7 +102,7 @@ const Topbar = () => {
       .filter((item) => matches(item.label, item.description, item.keywords))
       .map((item) => ({ ...item, type: 'Page' }));
     const studentItems = visibleStudents
-      .filter((student) => matches(student.name, student.id, 'student profile records grades attendance'))
+      .filter((student) => matches(student.name, student.id, 'student profile records grades'))
       .map((student) => ({
         type: 'Student',
         label: formatName(student.name),
@@ -126,20 +129,9 @@ const Topbar = () => {
         description: `${subject.count} grade record${subject.count === 1 ? '' : 's'}`,
         to: user.role === 'teacher' ? '/grades-management' : user.role === 'admin' ? '/manage-users#courses' : '/add-grades',
       }));
-    const visibleAttendance = user.role === 'student'
-      ? attendance.filter((record) => record.studentId === user.id)
-      : attendance;
-    const attendanceItems = user.role !== 'teacher' && matches('attendance records present absent late', visibleAttendance.map((record) => record.status).join(' '))
-      ? [{
-          type: 'Record',
-          label: 'Attendance Records',
-          description: `${visibleAttendance.length} attendance record${visibleAttendance.length === 1 ? '' : 's'}`,
-          to: '/attendance',
-        }]
-      : [];
 
-    return [...pageItems, ...studentItems, ...subjectItems, ...attendanceItems].slice(0, 8);
-  }, [attendance, grades, trimmedQuery, user, users]);
+    return [...pageItems, ...studentItems, ...subjectItems].slice(0, 8);
+  }, [grades, trimmedQuery, user, users]);
 
   const handleSearchSubmit = (event) => {
     event.preventDefault();
@@ -163,6 +155,18 @@ const Topbar = () => {
     setActivePanel('');
   };
 
+  const handleSelectCalendarDate = (date) => {
+    setSelectedDate(date);
+    setCalendarMonth(getMonthStart(date));
+  };
+
+  const handleJumpToToday = () => {
+    const currentDate = new Date();
+
+    setSelectedDate(currentDate);
+    setCalendarMonth(getMonthStart(currentDate));
+  };
+
   const renderActionPanel = (panelName, title, items) => {
     if (activePanel !== panelName) {
       return null;
@@ -177,6 +181,65 @@ const Topbar = () => {
             <small>{item.description}</small>
           </button>
         ))}
+      </div>
+    );
+  };
+
+  const renderCalendarPanel = () => {
+    if (activePanel !== 'calendar') {
+      return null;
+    }
+
+    return (
+      <div className="topbar-calendar-panel" role="dialog" aria-label="Calendar">
+        <div className="topbar-calendar-selected">
+          <strong>{selectedDateLabel}</strong>
+          <button type="button" onClick={handleJumpToToday}>Today</button>
+        </div>
+
+        <div className="topbar-calendar-month">
+          <strong>{calendarMonthLabel}</strong>
+          <span>
+            <button type="button" aria-label="Previous month" onClick={() => setCalendarMonth((currentMonth) => addMonths(currentMonth, -1))}>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m18 15-6-6-6 6" />
+              </svg>
+            </button>
+            <button type="button" aria-label="Next month" onClick={() => setCalendarMonth((currentMonth) => addMonths(currentMonth, 1))}>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+          </span>
+        </div>
+
+        <div className="topbar-calendar-weekdays" aria-hidden="true">
+          {calendarWeekdays.map((weekday) => <span key={weekday}>{weekday}</span>)}
+        </div>
+
+        <div className="topbar-calendar-grid">
+          {calendarDays.map((day) => {
+            const isSelected = isSameCalendarDay(day.date, selectedDate);
+            const isToday = isSameCalendarDay(day.date, today);
+
+            return (
+              <button
+                key={getCalendarDateKey(day.date)}
+                type="button"
+                className={[
+                  'topbar-calendar-day',
+                  day.isCurrentMonth ? '' : 'outside',
+                  isToday ? 'today' : '',
+                  isSelected ? 'selected' : '',
+                ].filter(Boolean).join(' ')}
+                aria-pressed={isSelected}
+                onClick={() => handleSelectCalendarDate(day.date)}
+              >
+                {day.date.getDate()}
+              </button>
+            );
+          })}
+        </div>
       </div>
     );
   };
@@ -242,15 +305,7 @@ const Topbar = () => {
             <path d="M16 2v4M8 2v4M3 10h18" />
           </svg>
           </button>
-          {renderActionPanel('calendar', 'Calendar', calendarItems)}
-        </div>
-        <div className="topbar-action-wrap">
-          <button type="button" aria-label="Messages" aria-expanded={activePanel === 'messages'} onClick={() => setActivePanel((currentPanel) => currentPanel === 'messages' ? '' : 'messages')}>
-          <svg viewBox="0 0 24 24">
-            <path d="M21 15a4 4 0 0 1-4 4H7l-4 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
-          </svg>
-          </button>
-          {renderActionPanel('messages', 'Messages', messageItems)}
+          {renderCalendarPanel()}
         </div>
       </div>
     </header>

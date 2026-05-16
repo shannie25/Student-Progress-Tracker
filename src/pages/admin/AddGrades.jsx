@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
-import { LoadingSpinner, StatusMessage } from '../../components/ui';
+import { useStatusToast } from '../../hooks/useNotifications';
+import { CenteredStatusCard, LoadingSpinner, StatusMessage } from '../../components/ui';
+import UserAvatar from '../../components/UserAvatar';
+import { getCourses } from '../../services/adminService';
 import './AddGrades.css';
 
 const activities = [
@@ -27,13 +30,32 @@ const getLetterGrade = (score) => {
   return 'F';
 };
 
+const getErrorText = (error, fallback) => {
+  return error instanceof Error && error.message ? error.message : fallback;
+};
+
+const valuesMatch = (left, right) => {
+  return String(left || '').trim().toLowerCase() === String(right || '').trim().toLowerCase();
+};
+
+const assignmentMatchesSubject = (assignment, subjectName) => {
+  if (!subjectName) {
+    return true;
+  }
+
+  return [assignment.subject, assignment.course, assignment.section].some((value) => valuesMatch(value, subjectName));
+};
+
 const AddGrades = () => {
-  const { users, grades, addGrade, classAnalytics } = useAuth();
+  const { user, users, grades, addGrade, classAnalytics, teacherAssignments } = useAuth();
   const students = users.filter((user) => user.role === 'student');
   const fileInputRef = useRef(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState(students[0]?.id || '');
-  const [subject, setSubject] = useState('Math');
+  const [subject, setSubject] = useState('');
+  const [courses, setCourses] = useState([]);
+  const [selectedSubjectFilter, setSelectedSubjectFilter] = useState('');
+  const [selectedClassFilter, setSelectedClassFilter] = useState('');
   const [schoolYear, setSchoolYear] = useState('2025-2026');
   const [semester, setSemester] = useState('1st Semester');
   const [term, setTerm] = useState('Prelim');
@@ -48,19 +70,110 @@ const AddGrades = () => {
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  useStatusToast(successMessage, 'success', 'Grades updated');
+  useStatusToast(errorMessage, 'error', 'Grades issue');
 
   useEffect(() => {
-    if (!selectedStudentId && students[0]?.id) {
-      setSelectedStudentId(students[0].id);
+    getCourses()
+      .then(setCourses)
+      .catch(() => {
+        setCourses([]);
+      });
+  }, []);
+
+  const courseOptions = useMemo(() => {
+    const teacherSubjects = new Set(
+      teacherAssignments
+        .filter((assignment) => !user || user.role !== 'teacher' || assignment.teacherId === user.id)
+        .map((assignment) => assignment.subject)
+        .filter(Boolean)
+    );
+    const visibleCourses = user?.role === 'teacher'
+      ? courses.filter((course) => course.teacherId === user.id || teacherSubjects.has(course.name))
+      : courses;
+    const courseMap = new Map();
+
+    visibleCourses.forEach((course) => {
+      if (course.name) {
+        courseMap.set(course.name, course);
+      }
+    });
+
+    teacherSubjects.forEach((subjectName) => {
+      if (!courseMap.has(subjectName)) {
+        courseMap.set(subjectName, { id: subjectName, name: subjectName, code: '' });
+      }
+    });
+
+    return Array.from(courseMap.values()).sort((firstCourse, secondCourse) => firstCourse.name.localeCompare(secondCourse.name));
+  }, [courses, teacherAssignments, user]);
+
+  const availableStudents = useMemo(() => {
+    if (user?.role !== 'teacher') {
+      return students;
     }
-  }, [selectedStudentId, students]);
+
+    return students.filter((student) => (
+      teacherAssignments.some((assignment) => (
+        assignment.teacherId === user.id
+        && valuesMatch(assignment.studentId, student.id)
+        && assignmentMatchesSubject(assignment, subject)
+      ))
+    ));
+  }, [students, subject, teacherAssignments, user]);
+
+  useEffect(() => {
+    if (courseOptions.length === 0) {
+      setSubject('');
+      setSelectedSubjectFilter('');
+      return;
+    }
+
+    if (!courseOptions.some((course) => course.name === subject)) {
+      setSubject(courseOptions[0].name);
+    }
+
+    if (selectedSubjectFilter && !courseOptions.some((course) => course.name === selectedSubjectFilter)) {
+      setSelectedSubjectFilter('');
+    }
+  }, [courseOptions, selectedSubjectFilter, subject]);
+
+  useEffect(() => {
+    if (!availableStudents.length) {
+      setSelectedStudentId('');
+      return;
+    }
+
+    if (!availableStudents.some((student) => valuesMatch(student.id, selectedStudentId))) {
+      setSelectedStudentId(availableStudents[0].id);
+    }
+  }, [availableStudents, selectedStudentId]);
+
+  const classOptions = useMemo(() => {
+    const labels = courseOptions
+      .map((course) => course.code || course.section || course.name)
+      .filter(Boolean);
+
+    return Array.from(new Set(labels));
+  }, [courseOptions]);
+
+  useEffect(() => {
+    if (selectedClassFilter && !classOptions.includes(selectedClassFilter)) {
+      setSelectedClassFilter('');
+    }
+  }, [classOptions, selectedClassFilter]);
 
   const selectedStudent = useMemo(() => {
-    return students.find((student) => String(student.id) === String(selectedStudentId)) || students[0] || fallbackRows[0];
-  }, [selectedStudentId, students]);
+    return availableStudents.find((student) => valuesMatch(student.id, selectedStudentId)) || availableStudents[0] || fallbackRows[0];
+  }, [availableStudents, selectedStudentId]);
 
-  const rows = students.length
-    ? students.map((student) => {
+  const selectedCourse = useMemo(() => {
+    return courseOptions.find((course) => course.name === subject) || courseOptions[0] || null;
+  }, [courseOptions, subject]);
+
+  const rows = useMemo(() => {
+    return students.length
+      ? students.map((student) => {
         const studentGrades = grades.filter((grade) => grade.studentId === student.id);
         const latestGrade = studentGrades[0];
         const averageScore = studentGrades.length
@@ -70,6 +183,7 @@ const AddGrades = () => {
         return {
           id: student.id,
           name: student.name,
+          profilePicture: student.profilePicture,
           quiz: latestGrade?.term || '-',
           assignment: latestGrade?.subject || '-',
           midterm: latestGrade?.semester || '-',
@@ -78,7 +192,23 @@ const AddGrades = () => {
           grade: averageScore ? getLetterGrade(averageScore) : 'N/A',
         };
       })
-    : [];
+      : [];
+  }, [grades, students]);
+
+  const displayRows = useMemo(() => {
+    return rows.filter((row) => {
+      const studentGrades = grades.filter((grade) => String(grade.studentId) === String(row.id));
+      const studentAssignments = teacherAssignments.filter((assignment) => String(assignment.studentId) === String(row.id));
+      const matchesSubject = !selectedSubjectFilter
+        || studentGrades.some((grade) => grade.subject === selectedSubjectFilter)
+        || studentAssignments.some((assignment) => assignment.subject === selectedSubjectFilter);
+      const matchesClass = !selectedClassFilter
+        || studentAssignments.some((assignment) => [assignment.section, assignment.course].includes(selectedClassFilter))
+        || students.find((student) => String(student.id) === String(row.id))?.course === selectedClassFilter;
+
+      return matchesSubject && matchesClass;
+    });
+  }, [grades, rows, selectedClassFilter, selectedSubjectFilter, students, teacherAssignments]);
 
   const hasCompleteScores = activities.every((activity) => scores[activity.id] !== '');
   const finalScore = hasCompleteScores
@@ -113,7 +243,12 @@ const AddGrades = () => {
     }
 
     if (!selectedStudentId) {
-      setErrorMessage('Assign students to this teacher before saving grades.');
+      setErrorMessage(subject ? 'Assign at least one student to this subject before saving grades.' : 'Assign students to this teacher before saving grades.');
+      return;
+    }
+
+    if (!subject) {
+      setErrorMessage('Create or assign a course before saving grades.');
       return;
     }
 
@@ -132,8 +267,8 @@ const AddGrades = () => {
       });
       setIsModalOpen(false);
       setSuccessMessage(`Grades for ${selectedStudent.name} were saved successfully.`);
-    } catch {
-      setErrorMessage('We could not save the grade. Check the student and scores, then try again.');
+    } catch (error) {
+      setErrorMessage(getErrorText(error, 'We could not save the grade. Check the student and scores, then try again.'));
     } finally {
       setIsSaving(false);
     }
@@ -141,7 +276,7 @@ const AddGrades = () => {
 
   const handleExportCsv = () => {
     const header = ['Student ID', 'Student Name', 'Latest Term', 'Latest Subject', 'Semester', 'School Year', 'Average Score', 'Grade'];
-    const body = rows.map((row) => [row.id, row.name, row.quiz, row.assignment, row.midterm, row.final, row.total, row.grade]);
+    const body = displayRows.map((row) => [row.id, row.name, row.quiz, row.assignment, row.midterm, row.final, row.total, row.grade]);
     const csvContent = [header, ...body]
       .map((values) => values.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','))
       .join('\n');
@@ -157,7 +292,7 @@ const AddGrades = () => {
   };
 
   const handleExportExcel = () => {
-    const tableRows = rows.map((row) => `
+    const tableRows = displayRows.map((row) => `
       <tr>
         <td>${row.id}</td>
         <td>${row.name}</td>
@@ -242,8 +377,8 @@ const AddGrades = () => {
 
       await Promise.all(rowsToUpload.map((row) => addGrade(row)));
       setSuccessMessage(`${rowsToUpload.length} grade row${rowsToUpload.length === 1 ? '' : 's'} uploaded successfully.`);
-    } catch {
-      setErrorMessage('We could not upload the grades. Check the CSV format and try again.');
+    } catch (error) {
+      setErrorMessage(getErrorText(error, 'We could not upload the grades. Check the CSV format and try again.'));
     } finally {
       setIsUploading(false);
       event.target.value = '';
@@ -252,6 +387,19 @@ const AddGrades = () => {
 
   return (
     <div className="grades-management-page">
+      <CenteredStatusCard
+        variant={errorMessage ? 'error' : 'success'}
+        title={errorMessage ? 'Action Needed' : 'Success'}
+        message={errorMessage || successMessage}
+        onDismiss={() => {
+          if (errorMessage) {
+            setErrorMessage('');
+          } else {
+            setSuccessMessage('');
+          }
+        }}
+      />
+
       <div className="grades-management-header">
         <h1>Grades Management</h1>
         <div className="grades-management-actions">
@@ -300,18 +448,20 @@ const AddGrades = () => {
       <section className="grades-filter-bar" aria-label="Grade filters">
         <label>
           <span>Subject</span>
-          <select defaultValue="Math">
-            <option>Math</option>
-            <option>English</option>
-            <option>Science</option>
+          <select value={selectedSubjectFilter} onChange={(event) => setSelectedSubjectFilter(event.target.value)}>
+            <option value="">All subjects</option>
+            {courseOptions.map((course) => (
+              <option key={course.id || course.name} value={course.name}>{course.name}</option>
+            ))}
           </select>
         </label>
         <label>
           <span>Class</span>
-          <select defaultValue="BSIT - 1A">
-            <option>BSIT - 1A</option>
-            <option>BSIT - 1B</option>
-            <option>BSCS - 2A</option>
+          <select value={selectedClassFilter} onChange={(event) => setSelectedClassFilter(event.target.value)}>
+            <option value="">All classes</option>
+            {classOptions.map((className) => (
+              <option key={className} value={className}>{className}</option>
+            ))}
           </select>
         </label>
         <label>
@@ -321,7 +471,10 @@ const AddGrades = () => {
             <option>2nd Semester</option>
           </select>
         </label>
-        <button type="button">Clear Filters</button>
+        <button type="button" onClick={() => {
+          setSelectedSubjectFilter('');
+          setSelectedClassFilter('');
+        }}>Clear Filters</button>
       </section>
 
       <section className="grades-table-card">
@@ -338,10 +491,10 @@ const AddGrades = () => {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {displayRows.map((row) => (
               <tr key={row.id}>
                 <td>
-                  <span className="grades-student-avatar">{row.name[0]}</span>
+                  <UserAvatar user={row} className="grades-student-avatar" fallback="S" />
                   <span className="grades-student-info">
                     <strong>{row.name}</strong>
                     <small>ID: {row.id}</small>
@@ -357,16 +510,16 @@ const AddGrades = () => {
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && (
+            {displayRows.length === 0 && (
               <tr>
-                <td colSpan="7">No assigned students yet. Ask an admin to assign students before adding grades.</td>
+                <td colSpan="7">{students.length === 0 ? 'No assigned students yet. Ask an admin to assign students before adding grades.' : 'No students match the selected filters.'}</td>
               </tr>
             )}
           </tbody>
         </table>
 
         <div className="grades-table-footer">
-          <span>Showing {rows.length} assigned student{rows.length === 1 ? '' : 's'}</span>
+          <span>Showing {displayRows.length} assigned student{displayRows.length === 1 ? '' : 's'}</span>
           <div className="grades-pagination" aria-label="Pagination">
             <button type="button" className="active">1</button>
             <button type="button">2</button>
@@ -398,7 +551,7 @@ const AddGrades = () => {
         <div className="add-grades-overlay" role="presentation">
           <form className="add-grades-modal" onSubmit={handleSubmit} role="dialog" aria-modal="true" aria-labelledby="add-grades-title" aria-busy={isSaving}>
             <div className="add-grades-modal-header">
-              <h2 id="add-grades-title">Add Grades - Math (BSIT - 1A)</h2>
+              <h2 id="add-grades-title">Add Grades - {subject || 'Select Course'}{selectedCourse?.code ? ` (${selectedCourse.code})` : ''}</h2>
               <button type="button" aria-label="Close add grades modal" onClick={() => setIsModalOpen(false)}>
                 x
               </button>
@@ -407,8 +560,8 @@ const AddGrades = () => {
             <label className="add-grades-field">
               <span>Select Student</span>
               <select value={selectedStudentId} onChange={(event) => setSelectedStudentId(event.target.value)}>
-                {students.length === 0 && <option value="">No assigned students</option>}
-                {students.map((student) => (
+                {availableStudents.length === 0 && <option value="">No assigned students</option>}
+                {availableStudents.map((student) => (
                   <option key={student.id} value={student.id}>{student.name}</option>
                 ))}
               </select>
@@ -416,7 +569,12 @@ const AddGrades = () => {
 
             <label className="add-grades-field">
               <span>Subject</span>
-              <input value={subject} onChange={(event) => setSubject(event.target.value)} required />
+              <select value={subject} onChange={(event) => setSubject(event.target.value)} required>
+                {courseOptions.length === 0 && <option value="">No courses available</option>}
+                {courseOptions.map((course) => (
+                  <option key={course.id || course.name} value={course.name}>{course.name}</option>
+                ))}
+              </select>
             </label>
 
             <div className="form-row" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
@@ -494,7 +652,7 @@ const AddGrades = () => {
 
             <div className="add-grades-modal-actions">
               <button type="button" onClick={() => setIsModalOpen(false)}>Cancel</button>
-              <button type="submit" disabled={!hasCompleteScores || isSaving}>
+              <button type="submit" disabled={!hasCompleteScores || !subject || !selectedStudentId || isSaving}>
                 <span className="button-content">
                   {isSaving && <LoadingSpinner label="Saving grades" size="small" />}
                   {isSaving ? 'Saving...' : 'Save Grades'}

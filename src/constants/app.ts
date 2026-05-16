@@ -15,7 +15,6 @@ export const ROUTES = {
   addGrades: '/add-grades',
   gradesManagement: '/grades-management',
   students: '/students',
-  attendance: '/attendance',
   reports: '/generate-report',
   manageUsers: '/manage-users',
 } as const;
